@@ -1,1 +1,1 @@
-export * as dependencyService from './dependency.service.js';
+export * as DependencyService from './dependency.service.js';

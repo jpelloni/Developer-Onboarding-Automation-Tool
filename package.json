@@ -8,9 +8,10 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "compile:win": "deno compile --allow-sys --allow-read --allow-env --target x86_64-pc-windows-msvc --sloppy-imports --output ./out/win/dev-setup.exe ./src/index.ts",
-    "compile:linux": "deno compile --allow-sys --allow-read --allow-env --target x86_64-unknown-linux-gnu --sloppy-imports --output ./out/linux/dev-setup ./src/index.ts",
-    "compile:mac": "deno compile --allow-sys --allow-read --allow-env --target x86_64-apple-darwin --sloppy-imports --output ./out/mac/dev-setup ./src/index.ts",
+    "lint": "eslint src",
+    "compile:win": "deno compile --allow-sys --allow-read --allow-env --allow-run --target x86_64-pc-windows-msvc --sloppy-imports --output ./out/win/dev-setup.exe ./src/index.ts",
+    "compile:linux": "deno compile --allow-sys --allow-read --allow-env --allow-run --target x86_64-unknown-linux-gnu --sloppy-imports --output ./out/linux/dev-setup ./src/index.ts",
+    "compile:mac": "deno compile --allow-sys --allow-read --allow-env --allow-run --target x86_64-apple-darwin --sloppy-imports --output ./out/mac/dev-setup ./src/index.ts",
     "compile": "pnpm run compile:win && pnpm run compile:linux && pnpm run compile:mac"
   },
   "keywords": [],
@@ -30,6 +31,8 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
-    "tsx": "^4.23.15"
+    "eslint": "^10.11.0",
+    "tsx": "^4.23.15",
+    "typescript-eslint": "^8.71.0"
   }
 }
