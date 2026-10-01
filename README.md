@@ -78,9 +78,10 @@ dev-setup/
 │       └── validation.test.ts
 │
 ├── .claude/
-│   └── skills/
-│       ├── generate-docs/
-│       └── generate-jest-tests/
+│   └── settings.json       # Enables the dev-workflow Claude Code plugin
+│
+├── scripts/
+│   └── check-pr.mjs        # PR policy check (run by CI and `pnpm check:pr`)
 │
 ├── .devcontainer/
 │   ├── devcontainer.json
@@ -200,17 +201,19 @@ The same pattern applies to `src/adapters/*` and to the module under test: mock 
 
 ### Generating tests with Claude Code
 
-This repo includes a [Claude Code](https://claude.com/claude-code) skill, `generate-jest-tests` (`.claude/skills/generate-jest-tests/`), that writes a full test suite for a source file following the conventions above. It reads the target and its imports, creates the mirrored file under `tests/`, then runs the tests and lint until both pass.
+This repo uses the `dev-workflow` [Claude Code](https://claude.com/claude-code) plugin from the private [`jpelloni/claude-dev-skills`](https://github.com/jpelloni/claude-dev-skills) marketplace. `.claude/settings.json` enables it, so Claude Code prompts you to install it the first time you open the repo (you need access to that repository).
+
+Its `generate-jest-tests` skill writes a full test suite for a source file following the conventions above. It reads the target and its imports, creates the mirrored file under `tests/`, then runs the tests and lint until both pass with at least 80% coverage.
 
 In a Claude Code session at the repo root:
 
 ```text
-/generate-jest-tests src/utils/validation.ts
+/dev-workflow:generate-jest-tests src/utils/validation.ts
 ```
 
 If you don't pass a path, it targets the file you most recently opened or edited. If the file already has tests, it extends them instead of overwriting them.
 
-> This skill is a development aid for working on this repo. It is not a `dev-setup` CLI command and isn't part of the shipped binary.
+> These skills are development aids for working on this repo. They are not `dev-setup` CLI commands and aren't part of the shipped binary.
 
 ---
 
@@ -224,10 +227,10 @@ Every PR into `master` must meet these rules. The `PR checks` workflow (`.github
 - **Code documentation.** Every exported declaration in a changed `src/**/*.ts` file has a JSDoc (`/** ... */`) comment.
 - **Project documentation updated.** A PR that changes `src/` must also update `README.md` (or `docs/**`).
 
-The `generate-docs` Claude Code skill (`.claude/skills/generate-docs/`) writes the JSDoc and README updates for your changed files:
+The plugin's `generate-docs` skill writes the JSDoc and README updates for your changed files:
 
 ```text
-/generate-docs
+/dev-workflow:generate-docs
 ```
 
 Check locally before opening a PR:
