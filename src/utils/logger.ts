@@ -1,3 +1,13 @@
+/**
+ * Console logger with prefixed output (`[INFO]`, `[WARN]`, …) whose verbosity is set by the
+ * CLI's `--verbose` and `--debug` flags.
+ *
+ * `info` messages print only in verbose mode. `warn` and `debug` messages print only in debug
+ * mode. `error` and `log` always print, and `error` also prints the stack trace in debug mode.
+ *
+ * @param verbose Whether to print `info` messages.
+ * @param debugMode Whether to print `warn` and `debug` messages and error stack traces.
+ */
 export class Logger {
     private verbose = true;
     private debugMode = true;

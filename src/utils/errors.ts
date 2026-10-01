@@ -1,3 +1,9 @@
+/**
+ * General failure while checking or setting up a dependency.
+ *
+ * @param message Description of the failure.
+ * @param cause The underlying error, exposed as `cause` when provided.
+ */
 export class DependencyError extends Error {
     constructor(message: string, cause?: Error) {
         super(message);
@@ -6,6 +12,12 @@ export class DependencyError extends Error {
     }
 }
 
+/**
+ * A dependency is installed but its version is older than the required minimum.
+ *
+ * @param message Description of the version mismatch.
+ * @param cause The underlying error, exposed as `cause` when provided.
+ */
 export class VersionError extends Error {
     constructor(message: string, cause?: Error) {
         super(message);
@@ -14,6 +26,12 @@ export class VersionError extends Error {
     }
 }
 
+/**
+ * A dependency isn't installed, or its version command can't be run.
+ *
+ * @param message Description of the missing dependency.
+ * @param cause The underlying error (e.g. the failed process), exposed as `cause` when provided.
+ */
 export class MissingDependencyError extends Error {
     constructor(message: string, cause?: Error) {
         super(message);

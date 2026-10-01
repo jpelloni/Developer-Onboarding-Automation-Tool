@@ -80,6 +80,7 @@ export const compareVersions = (packageVersion: string, requiredVersion: string)
     return comparePreRelease(pv.preRelease, rv.preRelease) >= 0;
 };
 
+/** Version validation helpers, grouped for namespaced imports. */
 export const Validation = {
     compareVersions,
 };

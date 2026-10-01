@@ -50,6 +50,12 @@ const codePattern = /\.(?:[cm]?[jt]s|[jt]sx)$/;
 const testFilePattern = /\.(?:test|spec)\.[^.]+$/;
 const docPattern = /^(README\.md|docs\/.+)$/;
 
+const hasCode = (source) => source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '')
+    .replace(/\bexport\s*\{\s*\}\s*;?/g, '')
+    .trim() !== '';
+
 const inDirs = (file, dirs) => dirs.some((dir) => file.startsWith(`${dir}/`));
 
 const changedFiles = [...new Set([
@@ -106,6 +112,11 @@ if (changedSources.length > 0) {
 
     for (const file of changedSources) {
         const entry = summary[path.resolve(file)];
+
+        // Placeholder files with no code (comments and `export {}` only) have nothing to cover.
+        if (!entry && !hasCode(readFileSync(file, 'utf8'))) {
+            continue;
+        }
 
         if (!entry) {
             failures.push(`${file}: 0% coverage (not exercised by any test)`);

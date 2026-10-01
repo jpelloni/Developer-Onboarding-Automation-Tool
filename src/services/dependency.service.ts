@@ -37,6 +37,10 @@ async function checkDependency(dependency: string, logger: Logger): Promise<void
     }
 }
 
+/**
+ * Service that verifies the developer's required tools are installed and up to date,
+ * delegating the version checks to `NodeAdapter`.
+ */
 export const DependencyService = {
     checkDependencies,
 };

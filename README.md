@@ -41,10 +41,10 @@ A modular CLI tool designed to streamline and standardize developer onboarding. 
 dev-setup/
 ├── src/
 │   ├── commands/
-│   │   ├── init.ts
-│   │   ├── check.ts
-│   │   ├── env.ts
-│   │   └── bootstrap.ts
+│   │   ├── init.command.ts       # dev-setup init
+│   │   ├── check.command.ts      # Placeholder
+│   │   ├── env.command.ts        # Placeholder
+│   │   └── bootstrap.command.ts  # Placeholder
 │   │
 │   ├── services/
 │   │   ├── dependency.service.ts
@@ -60,7 +60,7 @@ dev-setup/
 │   │
 │   ├── utils/
 │   │   ├── logger.ts
-│   │   ├── exec.ts
+│   │   ├── exec.ts         # Placeholder for shell-execution helpers
 │   │   ├── validation.ts
 │   │   └── errors.ts
 │   │
@@ -68,14 +68,24 @@ dev-setup/
 │   │   ├── constants.ts
 │   │   └── defaults.ts
 │   │
-│   └── index.ts
+│   ├── cli.ts              # Builds the dev-setup program (createProgram)
+│   └── index.ts            # Entry point: parses process arguments
 │
 ├── tests/                  # Mirrors src/ — one *.test.ts per source file
 │   ├── commands/
+│   │   └── init.command.test.ts
 │   ├── services/
+│   │   └── dependency.service.test.ts
 │   ├── adapters/
-│   └── utils/
-│       └── validation.test.ts
+│   │   └── node.adapter.test.ts
+│   ├── utils/
+│   │   ├── errors.test.ts
+│   │   ├── logger.test.ts
+│   │   └── validation.test.ts
+│   ├── cli.test.ts
+│   ├── index.test.ts
+│   ├── jest-esm.d.ts       # Types for ESM-only jest APIs (jest.unstable_mockModule)
+│   └── tsconfig.json       # Editor type-checking for tests (not used by the build)
 │
 ├── .claude/
 │   └── settings.json       # Enables the dev-workflow Claude Code plugin
@@ -88,6 +98,7 @@ dev-setup/
 │   └── Dockerfile
 │
 ├── jest.config.mjs
+├── tsconfig.json           # Builds src/ only
 ├── package.json
 └── README.md
 ```
@@ -95,8 +106,11 @@ dev-setup/
 
 ## Architecture Overview
 
+### Entry point
+`src/cli.ts` exports `createProgram()`, which builds the `commander` program with its global options (`--verbose`, `--debug`) and adds each command from `src/commands/`. It doesn't parse anything, so tests can run commands against a fixed argument list. `src/index.ts` only calls `createProgram().parseAsync()` on the process arguments.
+
 ### Commands
-Thin wrappers that parse CLI input and call services.
+Thin wrappers that parse CLI input and call services. Each `src/commands/<name>.command.ts` exports a factory (e.g. `createInitCommand()`) that returns a `commander` `Command`, and reads the global options with `optsWithGlobals()`.
 
 ### Services
 Core business logic for onboarding, dependency checking, environment syncing, and bootstrapping.
@@ -109,6 +123,9 @@ Shared helpers for logging, executing shell commands, validation, and error hand
 
 ### Config
 Centralized constants, defaults, and templates.
+
+### Module exports
+Services, adapters, and utils have no `index.ts` barrel files. Import each module directly by its filename (e.g. `./services/dependency.service.js`). Services and adapters export a single named object that groups their public functions, such as `DependencyService.checkDependencies` and `NodeAdapter.checkNodeVersion`.
 
 ---
 
@@ -141,11 +158,14 @@ Tests live under `tests/` and mirror the `src/` directory structure, using the s
 | `src/utils/validation.ts`            | `tests/utils/validation.test.ts`            |
 | `src/services/dependency.service.ts` | `tests/services/dependency.service.test.ts` |
 | `src/adapters/docker.adapter.ts`     | `tests/adapters/docker.adapter.test.ts`     |
+| `src/commands/init.command.ts`       | `tests/commands/init.command.test.ts`       |
+| `src/cli.ts`                         | `tests/cli.test.ts`                         |
 
 ### Conventions
 
 - **ESM imports with `.js` extensions.** Import source modules exactly as `src/` imports itself (`'../../src/utils/validation.js'`); `jest.config.mjs` maps the extension back to the `.ts` file.
 - **Test globals are ambient, `jest` is not.** `describe`, `it`, `expect`, and `beforeEach` are globals. In native ESM mode the `jest` object isn't, so get it from `import.meta` (`const { jest } = import.meta;`) rather than adding `@jest/globals` as a dependency.
+- **Editor type checking.** The root `tsconfig.json` only covers `src/`, so `tests/tsconfig.json` extends it to cover `tests/`, which loads the Jest types in your editor. `@types/jest` doesn't declare `jest.unstable_mockModule`, so `tests/jest-esm.d.ts` adds it. If your editor reports `Cannot find name 'expect'`, restart the TypeScript server.
 - **One behavior per test**, written as Arrange / Act / Assert, grouped in one `describe` per exported function (or per method, for classes).
 - **No real side effects.** Mock `node:child_process`, `src/adapters/*`, and the network. Stub or spy on `Logger` so tests don't write to the console.
 - **Assert typed errors.** Check the error type and message against the classes in `src/utils/errors.ts` (`DependencyError`, `VersionError`, `MissingDependencyError`), not just that something threw.
@@ -223,7 +243,7 @@ Every PR into `master` must meet these rules. The `PR checks` workflow (`.github
 
 - **No unresolved TODOs** in changed files under `src/` or `tests/`.
 - **All unit tests pass.**
-- **At least 80% coverage for each updated file.** Every changed `src/**/*.ts` file needs at least 80% lines, statements, functions, and branches.
+- **At least 80% coverage for each updated file.** Every changed `src/**/*.ts` file needs at least 80% lines, statements, functions, and branches. Placeholder files with no code (only comments or `export {}`) are skipped.
 - **Code documentation.** Every exported declaration in a changed `src/**/*.ts` file has a JSDoc (`/** ... */`) comment.
 - **Project documentation updated.** A PR that changes `src/` must also update `README.md` (or `docs/**`).
 
