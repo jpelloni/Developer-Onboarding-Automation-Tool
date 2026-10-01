@@ -1,0 +1,30 @@
+name: PR checks
+
+on:
+  pull_request:
+    branches: [master]
+
+jobs:
+  pr-checks:
+    # Job name is the required status check on master; keep it in sync with branch protection.
+    name: pr-checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Run unit tests with coverage
+        run: pnpm test:pr
+
+      - name: Check changed files
+        run: node scripts/check-pr.mjs origin/${{ github.base_ref }}

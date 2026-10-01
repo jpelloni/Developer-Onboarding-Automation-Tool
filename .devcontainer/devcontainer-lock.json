@@ -1,9 +1,19 @@
 {
   "features": {
+    "ghcr.io/devcontainer-community/devcontainer-features/ripgrep:1": {
+      "version": "1.0.3",
+      "resolved": "ghcr.io/devcontainer-community/devcontainer-features/ripgrep@sha256:5fed7bcc70a222974726a47146f257b58cc96240513ed424793457e39bd7448a",
+      "integrity": "sha256:5fed7bcc70a222974726a47146f257b58cc96240513ed424793457e39bd7448a"
+    },
     "ghcr.io/devcontainers-community/features/deno:1": {
       "version": "1.2.2",
       "resolved": "ghcr.io/devcontainers-community/features/deno@sha256:159a0943baea16f344b617626ee8612e243ff9e9e13e0c5670b89bcdecd1b775",
       "integrity": "sha256:159a0943baea16f344b617626ee8612e243ff9e9e13e0c5670b89bcdecd1b775"
+    },
+    "ghcr.io/devcontainers-extra/features/claude-code:2": {
+      "version": "2.0.3",
+      "resolved": "ghcr.io/devcontainers-extra/features/claude-code@sha256:e119fb3524e9e55d47b84ee32b20085dbeae66f08d8e298e59c57a94f02d5b35",
+      "integrity": "sha256:e119fb3524e9e55d47b84ee32b20085dbeae66f08d8e298e59c57a94f02d5b35"
     },
     "ghcr.io/devcontainers-extra/features/pnpm:2": {
       "version": "2.0.5",

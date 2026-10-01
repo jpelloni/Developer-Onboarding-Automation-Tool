@@ -1,0 +1,13 @@
+{
+  "extraKnownMarketplaces": {
+    "claude-dev-skills": {
+      "source": {
+        "source": "github",
+        "repo": "jpelloni/claude-dev-skills"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "dev-workflow@claude-dev-skills": true
+  }
+}

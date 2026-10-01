@@ -1,31 +1,46 @@
-import { NODE_VERSION } from '../config/constants.js';
+import { NodeAdapter } from '../adapters/node.adapter.js';
+import type { Logger } from '../utils/logger.js';
 
-export function checkDependency(dependency: string): boolean {
-    try {
-        switch (dependency) {
-            case 'node':
-                if (Number(process.versions.node.split('.')[0]) < Number(NODE_VERSION.replace(/^v/, '').split('.')[0])) {
-                    console.warn(`Node.js ${NODE_VERSION} or newer is required; found ${process.version}.`);
-                    return false;
-                }
-                console.info(`Node version: ${process.version}`);
-                break;
-            case 'pnpm':
-                // Add logic to check pnpm version if needed
-               break;
-            default: 
-                require.resolve(dependency);
-                console.info(`Dependency "${dependency}" is installed with version ${require(dependency).version}`);
-                break;
+/**
+ * Checks each dependency concurrently and logs any failure, so one missing or outdated
+ * dependency doesn't stop the others from being checked.
+ *
+ * `node` and `pnpm` are version-checked against the minimums in `src/config/constants.ts`.
+ * Any other name is currently only logged.
+ *
+ * @param dependencies Names of the dependencies to check (e.g. `['node', 'pnpm']`).
+ * @param logger Logger that receives the results and errors.
+ */
+async function checkDependencies(
+    dependencies: string[],
+    logger: Logger): Promise<void> {
+    await Promise.all(dependencies.map(async (dependency) => {
+        try {
+            await checkDependency(dependency, logger);
+        } catch (ex) {
+            logger.error(ex instanceof Error ? ex : new Error(String(ex)));
         }
+    }));
+}
 
-        return true;
-    } catch (e) {
-        console.warn(`Dependency "${dependency}" is not installed.`);
-        return false;
+async function checkDependency(dependency: string, logger: Logger): Promise<void> {
+    switch (dependency) {
+        case 'node':
+            await NodeAdapter.checkNodeVersion(logger);
+            break;
+        case 'pnpm':
+            await NodeAdapter.checkPnpmVersion(logger);
+            break;
+        default:
+            logger.info(`Dependency "${dependency}" is installed.`);
+            break;
     }
 }
 
-export function checkDependencies(dependencies: string[]): boolean {
-    return dependencies.every(checkDependency);
-}
+/**
+ * Service that verifies the developer's required tools are installed and up to date,
+ * delegating the version checks to `NodeAdapter`.
+ */
+export const DependencyService = {
+    checkDependencies,
+};
