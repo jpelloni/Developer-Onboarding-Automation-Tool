@@ -1,6 +1,6 @@
 import { program } from "commander";
 import { DependencyService } from './services/index.js';
-import { Logger } from './utils/logger.util.js';
+import { Logger } from './utils/logger.js';
 
 program
     .name('dev-setup')

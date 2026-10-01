@@ -1,4 +1,4 @@
-interface ParsedVersion {
+type ParsedVersion = {
     core: number[];
     preRelease: string[];
 }
@@ -72,4 +72,8 @@ export const compareVersions = (packageVersion: string, requiredVersion: string)
     }
 
     return comparePreRelease(pv.preRelease, rv.preRelease) >= 0;
+};
+
+export const Validation = {
+    compareVersions,
 };

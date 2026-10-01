@@ -1,2 +1,2 @@
-export const NODE_VERSION = "v28.21.0";
-export const PNPM_VERSION = "15.0.0";
+export const NODE_VERSION = "v24.0.0";
+export const PNPM_VERSION = "12.0.0";

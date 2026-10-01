@@ -20,8 +20,8 @@ In addition:
   `MissingDependencyError`), not generic `Error`.
 - For functions that `Promise.all` over independent checks (e.g. `checkDependencies`), test
   that one failure doesn't abort the others.
-- `src/utils` is mid-refactor between `*.util.ts` and flat `*.ts` filenames, so some imports
-  don't resolve. If a target's import doesn't resolve, stop and ask rather than guessing.
+- `src/utils` uses flat filenames (`logger.ts`, `errors.ts`, `validation.ts`), imported with a
+  `.js` extension. There are no `*.util.ts` files.
 
 ## Documentation conventions
 

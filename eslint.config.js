@@ -10,7 +10,7 @@ export default tseslint.config(
     },
     {
         // Logger is the sole permitted gateway to stdout/stderr
-        files: ['src/utils/logger.util.ts'],
+        files: ['src/utils/logger.ts'],
         rules: {
             'no-console': 'off',
         },
