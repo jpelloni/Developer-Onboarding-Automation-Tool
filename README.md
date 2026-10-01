@@ -79,6 +79,7 @@ dev-setup/
 │
 ├── .claude/
 │   └── skills/
+│       ├── generate-docs/
 │       └── generate-jest-tests/
 │
 ├── .devcontainer/
@@ -210,6 +211,31 @@ In a Claude Code session at the repo root:
 If you don't pass a path, it targets the file you most recently opened or edited. If the file already has tests, it extends them instead of overwriting them.
 
 > This skill is a development aid for working on this repo. It is not a `dev-setup` CLI command and isn't part of the shipped binary.
+
+---
+
+## Pull Request Requirements
+
+Every PR into `master` must meet these rules. The `PR checks` workflow (`.github/workflows/pr-checks.yml`) enforces them.
+
+- **No unresolved TODOs** in changed files under `src/` or `tests/`.
+- **All unit tests pass.**
+- **At least 80% coverage for each updated file.** Every changed `src/**/*.ts` file needs at least 80% lines, statements, functions, and branches.
+- **Code documentation.** Every exported declaration in a changed `src/**/*.ts` file has a JSDoc (`/** ... */`) comment.
+- **Project documentation updated.** A PR that changes `src/` must also update `README.md` (or `docs/**`).
+
+The `generate-docs` Claude Code skill (`.claude/skills/generate-docs/`) writes the JSDoc and README updates for your changed files:
+
+```text
+/generate-docs
+```
+
+Check locally before opening a PR:
+
+```bash
+pnpm test:pr     # run tests and write coverage/coverage-summary.json
+pnpm check:pr    # check files changed vs origin/master (pass another base ref as an argument if needed)
+```
 
 ---
 
