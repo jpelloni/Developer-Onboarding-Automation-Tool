@@ -11,7 +11,7 @@ import type { Logger } from '../utils/logger.js';
  * @param dependencies Names of the dependencies to check (e.g. `['node', 'pnpm']`).
  * @param logger Logger that receives the results and errors.
  */
-export async function checkDependencies(
+async function checkDependencies(
     dependencies: string[],
     logger: Logger): Promise<void> {
     await Promise.all(dependencies.map(async (dependency) => {
@@ -36,3 +36,7 @@ async function checkDependency(dependency: string, logger: Logger): Promise<void
             break;
     }
 }
+
+export const DependencyService = {
+    checkDependencies,
+};

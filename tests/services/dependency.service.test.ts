@@ -10,7 +10,7 @@ jest.unstable_mockModule('../../src/adapters/node.adapter.js', () => ({
     NodeAdapter: { checkNodeVersion, checkPnpmVersion },
 }));
 
-const { checkDependencies } = await import('../../src/services/dependency.service.js');
+const { DependencyService: { checkDependencies } } = await import('../../src/services/dependency.service.js');
 
 const createLogger = () => ({
     info: jest.fn(),

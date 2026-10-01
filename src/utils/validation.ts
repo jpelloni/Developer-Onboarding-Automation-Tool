@@ -7,6 +7,10 @@ const NUMERIC_IDENTIFIER = /^\d+$/;
 
 const parseVersion = (version: string): ParsedVersion => {
     const [withoutBuild] = version.trim().replace(/^v/, '').split('+');
+    if (!withoutBuild) {
+        return { core: [0], preRelease: [] };
+    }
+
     const dashIndex = withoutBuild.indexOf('-');
     const coreText = dashIndex === -1 ? withoutBuild : withoutBuild.slice(0, dashIndex);
     const preReleaseText = dashIndex === -1 ? '' : withoutBuild.slice(dashIndex + 1);
@@ -28,17 +32,19 @@ const comparePreRelease = (a: string[], b: string[]): number => {
     if (a.length === 0 || b.length === 0) return b.length - a.length;
 
     for (let i = 0; i < Math.min(a.length, b.length); i++) {
-        const aNumeric = NUMERIC_IDENTIFIER.test(a[i]);
-        const bNumeric = NUMERIC_IDENTIFIER.test(b[i]);
+        const aItem = a[i] ?? '';
+        const bItem = b[i] ?? '';
+        const aNumeric = NUMERIC_IDENTIFIER.test(aItem);
+        const bNumeric = NUMERIC_IDENTIFIER.test(bItem);
 
         if (aNumeric && bNumeric) {
-            const diff = Number(a[i]) - Number(b[i]);
+            const diff = Number(aItem) - Number(bItem);
             if (diff !== 0) return diff;
         } else if (aNumeric !== bNumeric) {
             // Numeric identifiers have lower precedence than alphanumeric ones.
             return aNumeric ? -1 : 1;
-        } else if (a[i] !== b[i]) {
-            return a[i] < b[i] ? -1 : 1;
+        } else if (aItem !== bItem) {
+            return aItem < bItem ? -1 : 1;
         }
     }
 
