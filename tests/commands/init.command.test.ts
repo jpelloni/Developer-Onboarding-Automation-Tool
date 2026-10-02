@@ -18,7 +18,7 @@ jest.unstable_mockModule('../../src/services/dependency.service.js', () => ({
 }));
 jest.unstable_mockModule('../../src/utils/logger.js', () => ({ Logger: LoggerMock }));
 
-const { createInitCommand } = await import('../../src/commands/init.command.js');
+const { default: createInitCommand } = await import('../../src/commands/init.command.js');
 
 // `init` reads --verbose and --debug from its parent, so run it under a program that defines them.
 const runInit = (...args: string[]) => new Command()

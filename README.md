@@ -44,7 +44,8 @@ dev-setup/
 │   │   ├── init.command.ts       # dev-setup init
 │   │   ├── check.command.ts      # Placeholder
 │   │   ├── env.command.ts        # Placeholder
-│   │   └── bootstrap.command.ts  # Placeholder
+│   │   ├── bootstrap.command.ts  # Placeholder
+│   │   └── registry.ts           # Generated list of commands (do not edit)
 │   │
 │   ├── services/
 │   │   ├── dependency.service.ts
@@ -73,11 +74,14 @@ dev-setup/
 │
 ├── tests/                  # Mirrors src/ — one *.test.ts per source file
 │   ├── commands/
-│   │   └── init.command.test.ts
+│   │   ├── init.command.test.ts
+│   │   └── registry.test.ts
 │   ├── services/
 │   │   └── dependency.service.test.ts
 │   ├── adapters/
 │   │   └── node.adapter.test.ts
+│   ├── scripts/
+│   │   └── generate-commands.test.ts
 │   ├── utils/
 │   │   ├── errors.test.ts
 │   │   ├── logger.test.ts
@@ -91,7 +95,9 @@ dev-setup/
 │   └── settings.json       # Enables the dev-workflow Claude Code plugin
 │
 ├── scripts/
-│   └── check-pr.mjs        # PR policy check (run by CI and `pnpm check:pr`)
+│   ├── check-pr.mjs              # PR policy check (run by CI and `pnpm check:pr`)
+│   ├── generate-commands.mjs     # Writes src/commands/registry.ts
+│   └── generate-commands.d.mts   # Types for importing the generator in tests
 │
 ├── .devcontainer/
 │   ├── devcontainer.json
@@ -107,10 +113,42 @@ dev-setup/
 ## Architecture Overview
 
 ### Entry point
-`src/cli.ts` exports `createProgram()`, which builds the `commander` program with its global options (`--verbose`, `--debug`) and adds each command from `src/commands/`. It doesn't parse anything, so tests can run commands against a fixed argument list. `src/index.ts` only calls `createProgram().parseAsync()` on the process arguments.
+`src/cli.ts` exports `createProgram()`, which builds the `commander` program with its global options (`--verbose`, `--debug`) and adds every command listed in `src/commands/registry.ts`. It doesn't parse anything, so tests can run commands against a fixed argument list. `src/index.ts` only calls `createProgram().parseAsync()` on the process arguments.
 
 ### Commands
-Thin wrappers that parse CLI input and call services. Each `src/commands/<name>.command.ts` exports a factory (e.g. `createInitCommand()`) that returns a `commander` `Command`, and reads the global options with `optsWithGlobals()`.
+Thin wrappers that parse CLI input and call services. Each `src/commands/<name>.command.ts` default-exports a factory (e.g. `createInitCommand()`) that returns a `commander` `Command`, and reads the global options with `optsWithGlobals()`.
+
+Commands are discovered at build time, not at runtime. `scripts/generate-commands.mjs` scans `src/commands/` and writes `src/commands/registry.ts`, a typed list of static imports. Static imports keep every command visible to `tsc`, `tsx`, Jest, and `deno compile`, which only bundles imports it can find in the code. The generator runs automatically before `pnpm dev`, `build`, `test`, `test:coverage`, `test:pr`, and the `compile:*` scripts. The registry is committed, and CI fails if it's out of date.
+
+The generator enforces these rules:
+
+- Filenames must be kebab-case (`env-sync.command.ts` registers as `envSyncCommand`).
+- Placeholder files with no code (only comments or `export {}`) are skipped.
+- A file with code but no default export stops the generator with an error, so a command is never silently left out.
+- A default export that isn't a `() => Command` fails type checking in `registry.ts`, and two commands with the same name make `createProgram()` throw.
+
+#### Adding a command
+
+1. Create `src/commands/<name>.command.ts` with a default-exported factory:
+
+   ```ts
+   import { Command } from "commander";
+
+   /** Builds the `check` command, which ... */
+   export default function createCheckCommand(): Command {
+       return new Command('check')
+           .description('Verify required tools and versions')
+           .action(async (_options: unknown, command: Command) => {
+               const { verbose, debug } = command.optsWithGlobals();
+               // ...
+           });
+   }
+   ```
+
+2. Run `pnpm generate:commands`, or any script that runs it, such as `pnpm dev` or `pnpm test`.
+3. Commit the new command file and the updated `registry.ts`, then add `tests/commands/<name>.command.test.ts`.
+
+`src/cli.ts` doesn't change.
 
 ### Services
 Core business logic for onboarding, dependency checking, environment syncing, and bootstrapping.

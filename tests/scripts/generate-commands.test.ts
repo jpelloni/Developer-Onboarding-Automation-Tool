@@ -1,0 +1,198 @@
+import path from 'node:path';
+
+const { jest } = import.meta;
+
+const DIR = '/repo/src/commands';
+const REGISTRY_PATH = path.join(DIR, 'registry.ts');
+
+// In-memory src/commands/: filename -> contents.
+let files: Record<string, string> = {};
+
+const writeFileSync = jest.fn((filePath: string, contents: string) => {
+    files[path.basename(filePath)] = contents;
+});
+
+jest.unstable_mockModule('node:fs', () => ({
+    existsSync: (filePath: string) => path.basename(filePath) in files,
+    readdirSync: () => Object.keys(files),
+    readFileSync: (filePath: string) => {
+        const contents = files[path.basename(filePath)];
+        if (contents === undefined) throw new Error(`ENOENT: ${filePath}`);
+        return contents;
+    },
+    writeFileSync,
+}));
+
+const { findCommands, generate, hasCode, hasDefaultExport, renderRegistry, toIdentifier } =
+    await import('../../scripts/generate-commands.mjs');
+
+const COMMAND = 'export default function createCommand() { return new Command("x"); }\n';
+
+beforeEach(() => {
+    files = {};
+    writeFileSync.mockClear();
+});
+
+describe('hasCode', () => {
+    it('is false for an empty file', () => {
+        expect(hasCode('')).toBe(false);
+    });
+
+    it('is false for comments and `export {}` only', () => {
+        expect(hasCode('// placeholder\n/* more */\nexport {};\n')).toBe(false);
+    });
+
+    it('is true when there is a statement', () => {
+        expect(hasCode('// comment\nconst x = 1;\n')).toBe(true);
+    });
+});
+
+describe('hasDefaultExport', () => {
+    it('detects `export default function`', () => {
+        expect(hasDefaultExport(COMMAND)).toBe(true);
+    });
+
+    it('detects `export default <identifier>`', () => {
+        expect(hasDefaultExport('const create = () => x;\nexport default create;\n')).toBe(true);
+    });
+
+    it('is false for named exports only', () => {
+        expect(hasDefaultExport('export const create = () => x;\n')).toBe(false);
+    });
+
+    it('ignores a default export inside a comment', () => {
+        expect(hasDefaultExport('// export default create;\nexport const create = 1;\n')).toBe(false);
+    });
+});
+
+describe('toIdentifier', () => {
+    it('appends Command to a single-word name', () => {
+        expect(toIdentifier('init')).toBe('initCommand');
+    });
+
+    it('camel-cases kebab-case names', () => {
+        expect(toIdentifier('env-sync')).toBe('envSyncCommand');
+    });
+});
+
+describe('findCommands', () => {
+    it('returns command files sorted by filename', () => {
+        files = { 'zeta.command.ts': COMMAND, 'alpha.command.ts': COMMAND };
+
+        expect(findCommands(DIR)).toEqual([
+            { file: 'alpha.command.ts', identifier: 'alphaCommand' },
+            { file: 'zeta.command.ts', identifier: 'zetaCommand' },
+        ]);
+    });
+
+    it('ignores files that are not *.command.ts', () => {
+        files = { 'init.command.ts': COMMAND, 'registry.ts': 'export const x = 1;', 'helpers.ts': 'const y = 2;' };
+
+        expect(findCommands(DIR).map((c) => c.file)).toEqual(['init.command.ts']);
+    });
+
+    it('skips placeholder files with no code', () => {
+        files = { 'init.command.ts': COMMAND, 'env.command.ts': '', 'check.command.ts': '// soon\nexport {};\n' };
+
+        expect(findCommands(DIR).map((c) => c.file)).toEqual(['init.command.ts']);
+    });
+
+    it('throws when a file has code but no default export', () => {
+        files = { 'init.command.ts': 'export const createInitCommand = () => x;\n' };
+
+        expect(() => findCommands(DIR)).toThrow('init.command.ts: must default-export a function');
+    });
+
+    it('throws when a filename is not kebab-case', () => {
+        files = { 'envSync.command.ts': COMMAND };
+
+        expect(() => findCommands(DIR)).toThrow('envSync.command.ts: command filenames must be kebab-case');
+    });
+
+    it('reports every invalid file at once', () => {
+        files = { 'Bad.command.ts': COMMAND, 'named.command.ts': 'export const x = 1;\n' };
+
+        expect(() => findCommands(DIR)).toThrow(/Bad\.command\.ts[\s\S]*named\.command\.ts/);
+    });
+});
+
+describe('renderRegistry', () => {
+    it('imports each command and lists it in order', () => {
+        const output = renderRegistry([
+            { file: 'env-sync.command.ts', identifier: 'envSyncCommand' },
+            { file: 'init.command.ts', identifier: 'initCommand' },
+        ]);
+
+        expect(output).toContain("import envSyncCommand from './env-sync.command.js';\nimport initCommand from './init.command.js';\n");
+        expect(output).toContain('= [\n    envSyncCommand,\n    initCommand,\n];\n');
+    });
+
+    it('renders an empty, typed list when there are no commands', () => {
+        const output = renderRegistry([]);
+
+        expect(output).toContain('export const commandFactories: ReadonlyArray<() => Command> = [\n];\n');
+    });
+
+    it('marks the file as generated and documents the export', () => {
+        const output = renderRegistry([]);
+
+        expect(output).toMatch(/^\/\/ Generated by scripts\/generate-commands\.mjs/);
+        expect(output).toContain('/** Factories for every command');
+    });
+});
+
+describe('generate', () => {
+    it('writes the registry when it is missing', () => {
+        files = { 'init.command.ts': COMMAND };
+
+        expect(generate(DIR)).toBe(true);
+        expect(writeFileSync).toHaveBeenCalledWith(REGISTRY_PATH, renderRegistry(findCommands(DIR)));
+    });
+
+    it('rewrites the registry when it is out of date', () => {
+        files = { 'init.command.ts': COMMAND, 'registry.ts': 'stale' };
+
+        generate(DIR);
+
+        expect(files['registry.ts']).toContain('initCommand');
+    });
+
+    it('does not rewrite a registry that is already current', () => {
+        files = { 'init.command.ts': COMMAND };
+        generate(DIR);
+        writeFileSync.mockClear();
+
+        generate(DIR);
+
+        expect(writeFileSync).not.toHaveBeenCalled();
+    });
+
+    describe('with check', () => {
+        it('returns true and writes nothing when the registry is current', () => {
+            files = { 'init.command.ts': COMMAND };
+            files['registry.ts'] = renderRegistry(findCommands(DIR));
+
+            expect(generate(DIR, { check: true })).toBe(true);
+            expect(writeFileSync).not.toHaveBeenCalled();
+        });
+
+        it('returns false when the registry is stale', () => {
+            files = { 'init.command.ts': COMMAND, 'registry.ts': 'stale' };
+
+            expect(generate(DIR, { check: true })).toBe(false);
+            expect(writeFileSync).not.toHaveBeenCalled();
+        });
+
+        it('returns false when the registry is missing', () => {
+            files = { 'init.command.ts': COMMAND };
+
+            expect(generate(DIR, { check: true })).toBe(false);
+        });
+    });
+
+    it('propagates invalid command file errors', () => {
+        files = { 'init.command.ts': 'export const x = 1;\n' };
+
+        expect(() => generate(DIR)).toThrow('must default-export');
+    });
+});

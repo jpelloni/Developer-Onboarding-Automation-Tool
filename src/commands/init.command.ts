@@ -9,10 +9,10 @@ import { Logger } from '../utils/logger.js';
  * then checks that Node.js and pnpm are installed and meet the minimum versions. Dependency
  * failures are logged rather than thrown.
  *
- * @returns The `init` command, ready to add to the program with `addCommand`.
+ * @returns The `init` command, which `src/cli.ts` adds to the program through the registry.
  */
-export const createInitCommand = (): Command =>
-    new Command('init')
+export default function createInitCommand(): Command {
+    return new Command('init')
         .description('Initialize the developer onboarding setup')
         .action(async (_options: unknown, command: Command) => {
             const options = command.optsWithGlobals();
@@ -20,3 +20,4 @@ export const createInitCommand = (): Command =>
             logger.log('Developer onboarding setup initialized.');
             await DependencyService.checkDependencies(['node', 'pnpm'], logger);
         });
+}
