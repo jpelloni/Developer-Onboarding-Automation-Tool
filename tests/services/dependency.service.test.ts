@@ -6,8 +6,8 @@ const { jest } = import.meta;
 const checkNodeVersion = jest.fn<Promise<void>, [Logger]>();
 const checkPnpmVersion = jest.fn<Promise<void>, [Logger]>();
 
-jest.unstable_mockModule('../../src/adapters/node.adapter.js', () => ({
-    NodeAdapter: { checkNodeVersion, checkPnpmVersion },
+jest.unstable_mockModule('../../src/adapters/node-toolchain.adapter.js', () => ({
+    NodeToolchainAdapter: { checkNodeVersion, checkPnpmVersion },
 }));
 
 const { DependencyService: { checkDependencies } } = await import('../../src/services/dependency.service.js');
@@ -26,7 +26,7 @@ beforeEach(() => {
 });
 
 describe('checkDependencies', () => {
-    it('checks node and pnpm through the NodeAdapter', async () => {
+    it('checks node and pnpm through the NodeToolchainAdapter', async () => {
         const logger = createLogger();
 
         await checkDependencies(['node', 'pnpm'], logger as unknown as Logger);

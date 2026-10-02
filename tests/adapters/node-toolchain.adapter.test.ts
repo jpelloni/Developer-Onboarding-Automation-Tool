@@ -12,7 +12,7 @@ const execMock = jest.fn((_cmd: string, callback: ExecCallback) => {
 
 jest.unstable_mockModule('node:child_process', () => ({ exec: execMock }));
 
-const { NodeAdapter } = await import('../../src/adapters/node.adapter.js');
+const { NodeToolchainAdapter } = await import('../../src/adapters/node-toolchain.adapter.js');
 
 const stubExec = (stdout: string): void => {
     execMock.mockImplementation((_cmd: string, callback: ExecCallback) => {
@@ -38,12 +38,12 @@ beforeEach(() => {
     execMock.mockClear();
 });
 
-describe('NodeAdapter', () => {
+describe('NodeToolchainAdapter', () => {
     describe('checkNodeVersion', () => {
         it('runs `node --version`', async () => {
             stubExec(`${NODE_VERSION}\n`);
 
-            await NodeAdapter.checkNodeVersion(createLogger());
+            await NodeToolchainAdapter.checkNodeVersion(createLogger());
 
             expect(execMock).toHaveBeenCalledWith('node --version', expect.any(Function));
         });
@@ -52,7 +52,7 @@ describe('NodeAdapter', () => {
             const logger = createLogger();
             stubExec(`${NODE_VERSION}\n`);
 
-            await NodeAdapter.checkNodeVersion(logger);
+            await NodeToolchainAdapter.checkNodeVersion(logger);
 
             expect(logger.info).toHaveBeenCalledWith(`Node version: ${NODE_VERSION}`);
         });
@@ -60,13 +60,13 @@ describe('NodeAdapter', () => {
         it('resolves when the installed version is newer than the minimum', async () => {
             stubExec('v999.0.0\n');
 
-            await expect(NodeAdapter.checkNodeVersion(createLogger())).resolves.toBeUndefined();
+            await expect(NodeToolchainAdapter.checkNodeVersion(createLogger())).resolves.toBeUndefined();
         });
 
         it('throws a VersionError when the installed version is older than the minimum', async () => {
             stubExec('v1.0.0\n');
 
-            await expect(NodeAdapter.checkNodeVersion(createLogger())).rejects.toThrow(
+            await expect(NodeToolchainAdapter.checkNodeVersion(createLogger())).rejects.toThrow(
                 new VersionError(`Node v1.0.0 is older than the required ${NODE_VERSION}.`),
             );
         });
@@ -75,7 +75,7 @@ describe('NodeAdapter', () => {
             const cause = new Error('command not found: node');
             failExec(cause);
 
-            const error = await NodeAdapter.checkNodeVersion(createLogger()).catch((e: unknown) => e);
+            const error = await NodeToolchainAdapter.checkNodeVersion(createLogger()).catch((e: unknown) => e);
 
             expect(error).toBeInstanceOf(MissingDependencyError);
             expect((error as Error).message).toBe('Failed to run "node --version". Is Node installed?');
@@ -87,7 +87,7 @@ describe('NodeAdapter', () => {
                 throw 'spawn failed';
             });
 
-            const error = await NodeAdapter.checkNodeVersion(createLogger()).catch((e: unknown) => e);
+            const error = await NodeToolchainAdapter.checkNodeVersion(createLogger()).catch((e: unknown) => e);
 
             expect(error).toBeInstanceOf(MissingDependencyError);
             expect(((error as Error).cause as Error).message).toBe('spawn failed');
@@ -99,7 +99,7 @@ describe('NodeAdapter', () => {
             const logger = createLogger();
             stubExec(`${PNPM_VERSION}\n`);
 
-            await NodeAdapter.checkPnpmVersion(logger);
+            await NodeToolchainAdapter.checkPnpmVersion(logger);
 
             expect(execMock).toHaveBeenCalledWith('pnpm --version', expect.any(Function));
             expect(logger.info).toHaveBeenCalledWith(`pnpm version: ${PNPM_VERSION}`);
@@ -108,7 +108,7 @@ describe('NodeAdapter', () => {
         it('throws a VersionError when the installed version is older than the minimum', async () => {
             stubExec('1.0.0\n');
 
-            await expect(NodeAdapter.checkPnpmVersion(createLogger())).rejects.toThrow(
+            await expect(NodeToolchainAdapter.checkPnpmVersion(createLogger())).rejects.toThrow(
                 new VersionError(`pnpm 1.0.0 is older than the required ${PNPM_VERSION}.`),
             );
         });
@@ -116,7 +116,7 @@ describe('NodeAdapter', () => {
         it('throws a MissingDependencyError when pnpm cannot be run', async () => {
             failExec(new Error('command not found: pnpm'));
 
-            await expect(NodeAdapter.checkPnpmVersion(createLogger())).rejects.toThrow(MissingDependencyError);
+            await expect(NodeToolchainAdapter.checkPnpmVersion(createLogger())).rejects.toThrow(MissingDependencyError);
         });
     });
 });
