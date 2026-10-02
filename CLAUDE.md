@@ -30,6 +30,10 @@ In addition:
 - README sections to keep current: **Features** (one subsection per `dev-setup` command),
   **Project Structure**, **Architecture Overview**, **Testing**, and **Pull Request
   Requirements**.
+- When a planned feature is implemented, remove its **(planned)** marker in the README and
+  update `docs/portfolio-entry.json` (the portfolio site's project entry) so its
+  `description` and `technologies` describe only what is built, plus a short "In progress:"
+  sentence for what's next.
 
 ## Pull request rules
 

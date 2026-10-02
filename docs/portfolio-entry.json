@@ -1,0 +1,15 @@
+{
+  "title": "Developer Onboarding Automation CLI",
+  "description": "Built a modular TypeScript CLI (dev-setup) to standardize developer onboarding by automating environment setup and dependency validation. Designed a layered commands → services → adapters architecture that keeps external systems isolated, plus a build-time code generator that registers commands through static imports so they bundle cleanly into standalone Windows, macOS, and Linux binaries with Deno. Enforced quality through a GitHub Actions PR policy requiring passing tests, at least 80% coverage on changed files, JSDoc on every changed export, and up-to-date documentation. In progress: environment variable sync against .env.example and project scaffolding commands.",
+  "technologies": [
+    "TypeScript",
+    "Node.js",
+    "Commander.js",
+    "Deno",
+    "Jest",
+    "GitHub Actions",
+    "Docker"
+  ],
+  "demoUrl": null,
+  "githubUrl": "https://github.com/jpelloni/Developer-Onboarding-Automation-Tool"
+}

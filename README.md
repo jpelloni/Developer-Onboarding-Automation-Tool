@@ -6,24 +6,29 @@ A modular CLI tool designed to streamline and standardize developer onboarding. 
 
 ## Features
 
-### Environment Setup (`dev-setup init`)
-- Installs and validates required dependencies  
-- Generates `.env` from `.env.example`  
-- Syncs and validates environment variables  
-- Starts the development environment or devcontainer  
-- Runs initial project checks/tests  
+Sections marked **(planned)** describe features that aren't implemented yet.
 
-### Dependency Checker (`dev-setup check`)
+### Environment Setup (`dev-setup init`)
+- Checks that Node.js and pnpm are installed and meet the minimum versions in `src/config/constants.ts`
+
+**Planned:**
+- Install missing dependencies  
+- Generate `.env` from `.env.example`  
+- Sync and validate environment variables  
+- Start the development environment or devcontainer  
+- Run initial project checks/tests  
+
+### Dependency Checker (`dev-setup check`) (planned)
 - Verifies Node, pnpm, and Docker versions  
 - Confirms required CLI tools are installed  
 - Outputs a structured compatibility report  
 
-### Environment Variable Sync (`dev-setup env`)
+### Environment Variable Sync (`dev-setup env`) (planned)
 - Compares `.env` and `.env.example`  
 - Highlights missing or unused variables  
 - Optional integration with secrets managers  
 
-### Project Bootstrap (`dev-setup bootstrap`)
+### Project Bootstrap (`dev-setup bootstrap`) (planned)
 - Generates folder structure and boilerplate code  
 - Sets up linting, formatting, and testing configs  
 - Ensures consistent project scaffolding  
