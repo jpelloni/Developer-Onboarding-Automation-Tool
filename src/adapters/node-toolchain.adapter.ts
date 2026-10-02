@@ -64,4 +64,4 @@ const checkPnpmVersion = (logger: Logger): Promise<void> =>
  * Adapter for the Node.js toolchain: verifies that Node.js and pnpm are installed and meet the
  * minimum versions in `src/config/constants.ts`.
  */
-export const NodeAdapter = { checkNodeVersion, checkPnpmVersion };
+export const NodeToolchainAdapter = { checkNodeVersion, checkPnpmVersion };

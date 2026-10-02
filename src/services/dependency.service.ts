@@ -1,4 +1,4 @@
-import { NodeAdapter } from '../adapters/node.adapter.js';
+import { NodeToolchainAdapter } from '../adapters/node-toolchain.adapter.js';
 import type { Logger } from '../utils/logger.js';
 
 /**
@@ -26,10 +26,10 @@ async function checkDependencies(
 async function checkDependency(dependency: string, logger: Logger): Promise<void> {
     switch (dependency) {
         case 'node':
-            await NodeAdapter.checkNodeVersion(logger);
+            await NodeToolchainAdapter.checkNodeVersion(logger);
             break;
         case 'pnpm':
-            await NodeAdapter.checkPnpmVersion(logger);
+            await NodeToolchainAdapter.checkPnpmVersion(logger);
             break;
         default:
             logger.info(`Dependency "${dependency}" is installed.`);
@@ -39,7 +39,7 @@ async function checkDependency(dependency: string, logger: Logger): Promise<void
 
 /**
  * Service that verifies the developer's required tools are installed and up to date,
- * delegating the version checks to `NodeAdapter`.
+ * delegating the version checks to `NodeToolchainAdapter`.
  */
 export const DependencyService = {
     checkDependencies,

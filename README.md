@@ -55,7 +55,7 @@ dev-setup/
 │   │
 │   ├── adapters/
 │   │   ├── docker.adapter.ts
-│   │   ├── node.adapter.ts
+│   │   ├── node-toolchain.adapter.ts
 │   │   ├── secrets.adapter.ts
 │   │   └── fileSystem.adapter.ts
 │   │
@@ -79,7 +79,7 @@ dev-setup/
 │   ├── services/
 │   │   └── dependency.service.test.ts
 │   ├── adapters/
-│   │   └── node.adapter.test.ts
+│   │   └── node-toolchain.adapter.test.ts
 │   ├── scripts/
 │   │   └── generate-commands.test.ts
 │   ├── utils/
@@ -163,7 +163,7 @@ Shared helpers for logging, executing shell commands, validation, and error hand
 Centralized constants, defaults, and templates.
 
 ### Module exports
-Services, adapters, and utils have no `index.ts` barrel files. Import each module directly by its filename (e.g. `./services/dependency.service.js`). Services and adapters export a single named object that groups their public functions, such as `DependencyService.checkDependencies` and `NodeAdapter.checkNodeVersion`.
+Services, adapters, and utils have no `index.ts` barrel files. Import each module directly by its filename (e.g. `./services/dependency.service.js`). Services and adapters export a single named object that groups their public functions, such as `DependencyService.checkDependencies` and `NodeToolchainAdapter.checkNodeVersion`.
 
 ---
 
