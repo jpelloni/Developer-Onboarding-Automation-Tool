@@ -2,8 +2,5 @@
     "deno.enable": true,
     "deno.unstable": [
         "sloppy-imports"
-    ],
-    "claudeCode.autosave": true,
-    "claudeCode.useTerminal": true,
-    "terminal.integrated.defaultLocation": "view"
+    ]
 }
