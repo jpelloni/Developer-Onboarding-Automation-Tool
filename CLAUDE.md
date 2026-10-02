@@ -2,8 +2,9 @@
 
 ## Claude Code tooling
 
-The `generate-jest-tests`, `generate-docs`, and `setup-pr-policy` skills come from the
-`dev-workflow` plugin (`jpelloni/claude-dev-skills`), which `.claude/settings.json` enables. They
+The `generate-jest-tests` and `setup-pr-policy` skills come from the `typescript-dev-workflow`
+plugin, and `generate-docs` from the `shared-dev-workflow` plugin (both in
+`jpelloni/claude-dev-skills`), which `.claude/settings.json` enables. They
 are development aids for building this repo. Never add commands for them to `src/commands/`, and
 never wire them into `src/index.ts`; they are not `dev-setup` CLI features.
 
@@ -39,14 +40,14 @@ CI enforces these in `.github/workflows/pr-checks.yml`.
    comments. Resolve the work, or remove the comment and track it elsewhere (e.g. an issue).
 2. **All unit tests pass.**
 3. **At least 80% coverage for every updated file.** Each changed `src/**/*.ts` file needs
-   >= 80% lines, statements, functions, and branches. Use the `dev-workflow:generate-jest-tests` skill to
+   >= 80% lines, statements, functions, and branches. Use the `typescript-dev-workflow:generate-jest-tests` skill to
    add or extend tests.
 4. **Code documentation.** Every exported function, class, constant, interface, type, and enum
    in a changed `src/**/*.ts` file has a JSDoc (`/** ... */`) comment directly above it.
 5. **Project documentation updated.** A PR that changes `src/` must also update `README.md`
    (or `docs/**`) to reflect the change — commands, features, project structure, architecture.
 
-Use the `dev-workflow:generate-docs` skill to write the code and project documentation for changed files.
+Use the `shared-dev-workflow:generate-docs` skill to write the code and project documentation for changed files.
 
 Verify locally before creating a PR:
 

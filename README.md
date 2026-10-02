@@ -92,7 +92,7 @@ dev-setup/
 │   └── tsconfig.json       # Editor type-checking for tests (not used by the build)
 │
 ├── .claude/
-│   └── settings.json       # Enables the dev-workflow Claude Code plugin
+│   └── settings.json       # Enables the Claude Code dev-workflow plugins
 │
 ├── scripts/
 │   ├── check-pr.mjs              # PR policy check (run by CI and `pnpm check:pr`)
@@ -259,14 +259,14 @@ The same pattern applies to `src/adapters/*` and to the module under test: mock 
 
 ### Generating tests with Claude Code
 
-This repo uses the `dev-workflow` [Claude Code](https://claude.com/claude-code) plugin from the private [`jpelloni/claude-dev-skills`](https://github.com/jpelloni/claude-dev-skills) marketplace. `.claude/settings.json` enables it, so Claude Code prompts you to install it the first time you open the repo (you need access to that repository).
+This repo uses the `typescript-dev-workflow` and `shared-dev-workflow` [Claude Code](https://claude.com/claude-code) plugins from the private [`jpelloni/claude-dev-skills`](https://github.com/jpelloni/claude-dev-skills) marketplace. `.claude/settings.json` enables them, so Claude Code prompts you to install them the first time you open the repo (you need access to that repository).
 
-Its `generate-jest-tests` skill writes a full test suite for a source file following the conventions above. It reads the target and its imports, creates the mirrored file under `tests/`, then runs the tests and lint until both pass with at least 80% coverage.
+The `typescript-dev-workflow` plugin's `generate-jest-tests` skill writes a full test suite for a source file following the conventions above. It reads the target and its imports, creates the mirrored file under `tests/`, then runs the tests and lint until both pass with at least 80% coverage.
 
 In a Claude Code session at the repo root:
 
 ```text
-/dev-workflow:generate-jest-tests src/utils/validation.ts
+/typescript-dev-workflow:generate-jest-tests src/utils/validation.ts
 ```
 
 If you don't pass a path, it targets the file you most recently opened or edited. If the file already has tests, it extends them instead of overwriting them.
@@ -285,10 +285,10 @@ Every PR into `master` must meet these rules. The `PR checks` workflow (`.github
 - **Code documentation.** Every exported declaration in a changed `src/**/*.ts` file has a JSDoc (`/** ... */`) comment.
 - **Project documentation updated.** A PR that changes `src/` must also update `README.md` (or `docs/**`).
 
-The plugin's `generate-docs` skill writes the JSDoc and README updates for your changed files:
+The `shared-dev-workflow` plugin's `generate-docs` skill writes the JSDoc and README updates for your changed files:
 
 ```text
-/dev-workflow:generate-docs
+/shared-dev-workflow:generate-docs
 ```
 
 Check locally before opening a PR:

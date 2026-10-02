@@ -1,4 +1,8 @@
 {
+  "enabledPlugins": {
+    "shared-dev-workflow@claude-dev-skills": true,
+    "typescript-dev-workflow@claude-dev-skills": true
+  },
   "extraKnownMarketplaces": {
     "claude-dev-skills": {
       "source": {
@@ -6,8 +10,5 @@
         "repo": "jpelloni/claude-dev-skills"
       }
     }
-  },
-  "enabledPlugins": {
-    "dev-workflow@claude-dev-skills": true
   }
 }
