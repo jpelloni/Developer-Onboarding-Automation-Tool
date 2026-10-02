@@ -13,6 +13,9 @@
 			"dockerDashComposeVersion": "latest",
 			"moby": false
 		},
+		"ghcr.io/devcontainers/features/github-cli:1": {
+			"version": "latest"
+		},
 		"ghcr.io/devcontainers-extra/features/pnpm:2": {
 			"version": "latest"
 		},
