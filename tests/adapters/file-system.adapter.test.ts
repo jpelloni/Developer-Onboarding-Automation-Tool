@@ -5,8 +5,9 @@ const { jest } = import.meta;
 const fsConstants = { F_OK: 0, COPYFILE_EXCL: 1 };
 const access = jest.fn<Promise<void>, [string, number]>();
 const copyFile = jest.fn<Promise<void>, [string, string, number]>();
+const readFile = jest.fn<Promise<string>, [string, string]>();
 
-jest.unstable_mockModule('node:fs/promises', () => ({ access, copyFile, constants: fsConstants }));
+jest.unstable_mockModule('node:fs/promises', () => ({ access, copyFile, readFile, constants: fsConstants }));
 
 const { FileSystemAdapter } = await import('../../src/adapters/file-system.adapter.js');
 
@@ -16,6 +17,7 @@ const errnoError = (code: string): NodeJS.ErrnoException =>
 beforeEach(() => {
     access.mockReset().mockResolvedValue(undefined);
     copyFile.mockReset().mockResolvedValue(undefined);
+    readFile.mockReset().mockResolvedValue('PORT=3000\n');
 });
 
 describe('FileSystemAdapter', () => {
@@ -90,6 +92,31 @@ describe('FileSystemAdapter', () => {
 
             expect(error).toBeInstanceOf(FileSystemError);
             expect((error as Error).message).toBe('Failed to copy ".env.example" to ".env".');
+            expect((error as Error).cause).toBe(cause);
+        });
+    });
+
+    describe('readTextFile', () => {
+        it('reads the file as UTF-8', async () => {
+            await FileSystemAdapter.readTextFile('.env');
+
+            expect(readFile).toHaveBeenCalledWith('.env', 'utf8');
+        });
+
+        it('returns the file contents', async () => {
+            const result = await FileSystemAdapter.readTextFile('.env');
+
+            expect(result).toBe('PORT=3000\n');
+        });
+
+        it('throws a FileSystemError, keeping the cause, when the file cannot be read', async () => {
+            const cause = errnoError('ENOENT');
+            readFile.mockRejectedValue(cause);
+
+            const error = await FileSystemAdapter.readTextFile('.env').catch((e: unknown) => e);
+
+            expect(error).toBeInstanceOf(FileSystemError);
+            expect((error as Error).message).toBe('Failed to read ".env".');
             expect((error as Error).cause).toBe(cause);
         });
     });

@@ -25,9 +25,19 @@ Each step runs even if an earlier one fails; failures are logged as errors.
 - Confirms required CLI tools are installed  
 - Outputs a structured compatibility report  
 
-### Environment Variable Sync (`dev-setup env`) (planned)
-- Compares `.env` and `.env.example`  
-- Highlights missing or unused variables  
+### Environment Variable Sync (`dev-setup env`)
+- Compares the variables defined in `.env` with those in `.env.example`. Only names are compared, and values are never printed.
+- Lists the variables `.env` is **missing** (defined in `.env.example` but not in `.env`) and the **unused** ones (in `.env` but not in `.env.example`), or reports that the files are in sync.
+- Exits with code `1` when variables are missing or either file doesn't exist, so it can gate CI or scripts. Unused variables alone don't fail it. Run `dev-setup init` first if there's no `.env`.
+- Understands blank lines, `#` comments, and `export KEY=value`. Run with `--verbose` to see how many variables each file defines.
+
+```text
+$ dev-setup env
+[LOG] .env is missing 2 variable(s) defined in .env.example: PORT, API_KEY
+[LOG] .env has 1 variable(s) not defined in .env.example: LEGACY
+```
+
+**Planned:**
 - Optional integration with secrets managers  
 
 ### Project Bootstrap (`dev-setup bootstrap`) (planned)
@@ -50,13 +60,13 @@ dev-setup/
 │   ├── commands/
 │   │   ├── init.command.ts       # dev-setup init
 │   │   ├── check.command.ts      # Placeholder
-│   │   ├── env.command.ts        # Placeholder
+│   │   ├── env.command.ts        # dev-setup env
 │   │   ├── bootstrap.command.ts  # Placeholder
 │   │   └── registry.ts           # Generated list of commands (do not edit)
 │   │
 │   ├── services/
 │   │   ├── dependency.service.ts
-│   │   ├── env.service.ts         # Generates .env from .env.example
+│   │   ├── env.service.ts         # Generates .env and compares it with .env.example
 │   │   ├── devcontainer.service.ts
 │   │   └── project-bootstrap.service.ts
 │   │
@@ -68,6 +78,7 @@ dev-setup/
 │   │
 │   ├── utils/
 │   │   ├── logger.ts
+│   │   ├── env-file.ts     # Parses variable names from .env files
 │   │   ├── exec.ts         # Placeholder for shell-execution helpers
 │   │   ├── validation.ts
 │   │   └── errors.ts
@@ -81,6 +92,7 @@ dev-setup/
 │
 ├── tests/                  # Mirrors src/ — one *.test.ts per source file
 │   ├── commands/
+│   │   ├── env.command.test.ts
 │   │   ├── init.command.test.ts
 │   │   └── registry.test.ts
 │   ├── services/
@@ -92,6 +104,7 @@ dev-setup/
 │   ├── scripts/
 │   │   └── generate-commands.test.ts
 │   ├── utils/
+│   │   ├── env-file.test.ts
 │   │   ├── errors.test.ts
 │   │   ├── logger.test.ts
 │   │   └── validation.test.ts
@@ -160,13 +173,13 @@ The generator enforces these rules:
 `src/cli.ts` doesn't change.
 
 ### Services
-Core business logic for onboarding, dependency checking, environment syncing, and bootstrapping. `DependencyService.checkDependencies` checks tool versions, and `EnvService.generateEnvFile` creates `.env` from `.env.example`. Both log their results to the `Logger` they're given.
+Core business logic for onboarding, dependency checking, environment syncing, and bootstrapping. `DependencyService.checkDependencies` checks tool versions, `EnvService.generateEnvFile` creates `.env` from `.env.example`, and `EnvService.compareEnvFiles` reports the variables `.env` is missing or doesn't need. They log their results to the `Logger` they're given, and commands decide the exit code (for example, `env` sets `process.exitCode` to `1` when variables are missing).
 
 ### Adapters
 Isolated interfaces for external systems (Docker, Node, filesystem, secrets managers). Adapters wrap failures from the underlying system in the typed errors from `src/utils/errors.ts`. For example, `FileSystemAdapter` throws `FileSystemError`, and `FileSystemAdapter.copyFileIfAbsent` copies with `COPYFILE_EXCL`, so the existence check and the copy happen in one step and an existing file is never overwritten.
 
 ### Utils
-Shared helpers for logging, executing shell commands, validation, and error handling.
+Shared helpers for logging, executing shell commands, validation, `.env` parsing (`EnvFile.parseEnvKeys`), and error handling.
 
 ### Config
 Centralized constants, defaults, and templates.
