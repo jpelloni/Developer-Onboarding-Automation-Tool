@@ -80,7 +80,22 @@ export const compareVersions = (packageVersion: string, requiredVersion: string)
     return comparePreRelease(pv.preRelease, rv.preRelease) >= 0;
 };
 
+const VERSION_IN_TEXT = /v?\d+(?:\.\d+)*(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?/;
+
+/**
+ * Extracts the first version number from a tool's version output.
+ *
+ * A leading `v`, a pre-release (`-rc.1`), and build metadata (`+build.5`) are kept, so the
+ * result can be passed to {@link compareVersions}. For example, `Docker version 27.3.1, build
+ * ce12230` yields `27.3.1`, and `v24.1.0\n` yields `v24.1.0`.
+ *
+ * @param output The text printed by a version command.
+ * @returns The first version found, or the trimmed output when it contains no version number.
+ */
+export const extractVersion = (output: string): string => output.match(VERSION_IN_TEXT)?.[0] ?? output.trim();
+
 /** Version validation helpers, grouped for namespaced imports. */
 export const Validation = {
     compareVersions,
+    extractVersion,
 };

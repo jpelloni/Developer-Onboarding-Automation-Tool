@@ -1,19 +1,14 @@
-import { exec } from 'node:child_process';
-import { promisify } from 'node:util';
 import { NODE_VERSION, PNPM_VERSION } from '../config/constants.js';
-import { MissingDependencyError, VersionError } from '../utils/errors.js';
+import { VersionError } from '../utils/errors.js';
+import { getToolVersion } from '../utils/exec.js';
 import type { Logger } from '../utils/logger.js';
 import { compareVersions } from '../utils/validation.js';
 
-const execAsync = promisify(exec);
-
-const toError = (error: unknown): Error => (error instanceof Error ? error : new Error(String(error)));
-
 /**
- * Runs a tool's version command and verifies the reported version meets the minimum.
+ * Gets a tool's version and verifies it meets the minimum.
  *
  * @param label The tool's display name, used in log and error messages.
- * @param command The command that prints the tool's version (e.g. `node --version`).
+ * @param getVersion Returns the installed version.
  * @param requiredVersion The minimum acceptable version.
  * @param logger Logger that receives the detected version.
  * @throws {MissingDependencyError} When the version command can't be run.
@@ -21,17 +16,11 @@ const toError = (error: unknown): Error => (error instanceof Error ? error : new
  */
 const checkToolVersion = async (
     label: string,
-    command: string,
+    getVersion: () => Promise<string>,
     requiredVersion: string,
     logger: Logger,
 ): Promise<void> => {
-    let version: string;
-    try {
-        const { stdout } = await execAsync(command);
-        version = stdout.toString().trim();
-    } catch (error) {
-        throw new MissingDependencyError(`Failed to run "${command}". Is ${label} installed?`, toError(error));
-    }
+    const version = await getVersion();
 
     logger.info(`${label} version: ${version}`);
 
@@ -41,6 +30,22 @@ const checkToolVersion = async (
 };
 
 /**
+ * Gets the installed Node.js version by running `node --version`.
+ *
+ * @returns The version, e.g. `v24.1.0`.
+ * @throws {MissingDependencyError} When Node.js can't be run.
+ */
+const getNodeVersion = (): Promise<string> => getToolVersion('Node', 'node --version');
+
+/**
+ * Gets the installed pnpm version by running `pnpm --version`.
+ *
+ * @returns The version, e.g. `12.6.0`.
+ * @throws {MissingDependencyError} When pnpm can't be run.
+ */
+const getPnpmVersion = (): Promise<string> => getToolVersion('pnpm', 'pnpm --version');
+
+/**
  * Checks that the installed Node.js meets {@link NODE_VERSION}.
  *
  * @param logger Logger that receives the detected version.
@@ -48,7 +53,7 @@ const checkToolVersion = async (
  * @throws {VersionError} When Node.js is older than the required version.
  */
 const checkNodeVersion = (logger: Logger): Promise<void> =>
-    checkToolVersion('Node', 'node --version', NODE_VERSION, logger);
+    checkToolVersion('Node', getNodeVersion, NODE_VERSION, logger);
 
 /**
  * Checks that the installed pnpm meets {@link PNPM_VERSION}.
@@ -58,10 +63,10 @@ const checkNodeVersion = (logger: Logger): Promise<void> =>
  * @throws {VersionError} When pnpm is older than the required version.
  */
 const checkPnpmVersion = (logger: Logger): Promise<void> =>
-    checkToolVersion('pnpm', 'pnpm --version', PNPM_VERSION, logger);
+    checkToolVersion('pnpm', getPnpmVersion, PNPM_VERSION, logger);
 
 /**
- * Adapter for the Node.js toolchain: verifies that Node.js and pnpm are installed and meet the
- * minimum versions in `src/config/constants.ts`.
+ * Adapter for the Node.js toolchain: reports the installed Node.js and pnpm versions and
+ * verifies they meet the minimum versions in `src/config/constants.ts`.
  */
-export const NodeToolchainAdapter = { checkNodeVersion, checkPnpmVersion };
+export const NodeToolchainAdapter = { getNodeVersion, getPnpmVersion, checkNodeVersion, checkPnpmVersion };

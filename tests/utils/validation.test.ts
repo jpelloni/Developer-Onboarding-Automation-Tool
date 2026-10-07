@@ -1,4 +1,4 @@
-import { compareVersions } from '../../src/utils/validation.js';
+import { compareVersions, extractVersion, Validation } from '../../src/utils/validation.js';
 
 describe('compareVersions', () => {
     describe('equal versions', () => {
@@ -215,5 +215,37 @@ describe('compareVersions', () => {
 
             expect(result).toBe(true);
         });
+    });
+});
+
+describe('extractVersion', () => {
+    it('extracts the version from surrounding text', () => {
+        const result = extractVersion('Docker version 27.3.1, build ce12230\n');
+
+        expect(result).toBe('27.3.1');
+    });
+
+    it('keeps a leading "v" and drops a trailing newline', () => {
+        const result = extractVersion('v24.1.0\n');
+
+        expect(result).toBe('v24.1.0');
+    });
+
+    it('keeps pre-release and build metadata', () => {
+        const result = extractVersion('tool 1.2.3-rc.1+build.5 (linux)');
+
+        expect(result).toBe('1.2.3-rc.1+build.5');
+    });
+
+    it('returns the trimmed output when it contains no version number', () => {
+        const result = extractVersion('  unknown\n');
+
+        expect(result).toBe('unknown');
+    });
+});
+
+describe('Validation', () => {
+    it('exposes compareVersions and extractVersion', () => {
+        expect(Validation).toEqual({ compareVersions, extractVersion });
     });
 });
