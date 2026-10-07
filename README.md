@@ -10,10 +10,12 @@ Sections marked **(planned)** describe features that aren't implemented yet.
 
 ### Environment Setup (`dev-setup init`)
 - Checks that Node.js and pnpm are installed and meet the minimum versions in `src/config/constants.ts`
+- Creates `.env` by copying `.env.example` in the current directory. An existing `.env` is never overwritten, and the step is skipped when there's no `.env.example`. Run with `--verbose` to see why it was skipped.
+
+Each step runs even if an earlier one fails; failures are logged as errors.
 
 **Planned:**
 - Install missing dependencies  
-- Generate `.env` from `.env.example`  
 - Sync and validate environment variables  
 - Start the development environment or devcontainer  
 - Run initial project checks/tests  
@@ -54,15 +56,15 @@ dev-setup/
 │   │
 │   ├── services/
 │   │   ├── dependency.service.ts
-│   │   ├── env.service.ts
+│   │   ├── env.service.ts         # Generates .env from .env.example
 │   │   ├── devcontainer.service.ts
-│   │   └── projectBootstrap.service.ts
+│   │   └── project-bootstrap.service.ts
 │   │
 │   ├── adapters/
 │   │   ├── docker.adapter.ts
 │   │   ├── node-toolchain.adapter.ts
 │   │   ├── secrets.adapter.ts
-│   │   └── fileSystem.adapter.ts
+│   │   └── file-system.adapter.ts
 │   │
 │   ├── utils/
 │   │   ├── logger.ts
@@ -82,8 +84,10 @@ dev-setup/
 │   │   ├── init.command.test.ts
 │   │   └── registry.test.ts
 │   ├── services/
-│   │   └── dependency.service.test.ts
+│   │   ├── dependency.service.test.ts
+│   │   └── env.service.test.ts
 │   ├── adapters/
+│   │   ├── file-system.adapter.test.ts
 │   │   └── node-toolchain.adapter.test.ts
 │   ├── scripts/
 │   │   └── generate-commands.test.ts
@@ -156,10 +160,10 @@ The generator enforces these rules:
 `src/cli.ts` doesn't change.
 
 ### Services
-Core business logic for onboarding, dependency checking, environment syncing, and bootstrapping.
+Core business logic for onboarding, dependency checking, environment syncing, and bootstrapping. `DependencyService.checkDependencies` checks tool versions, and `EnvService.generateEnvFile` creates `.env` from `.env.example`. Both log their results to the `Logger` they're given.
 
 ### Adapters
-Isolated interfaces for external systems (Docker, Node, filesystem, secrets managers).
+Isolated interfaces for external systems (Docker, Node, filesystem, secrets managers). Adapters wrap failures from the underlying system in the typed errors from `src/utils/errors.ts`. For example, `FileSystemAdapter` throws `FileSystemError`, and `FileSystemAdapter.copyFileIfAbsent` copies with `COPYFILE_EXCL`, so the existence check and the copy happen in one step and an existing file is never overwritten.
 
 ### Utils
 Shared helpers for logging, executing shell commands, validation, and error handling.
@@ -211,7 +215,7 @@ Tests live under `tests/` and mirror the `src/` directory structure, using the s
 - **Editor type checking.** The root `tsconfig.json` only covers `src/`, so `tests/tsconfig.json` extends it to cover `tests/`, which loads the Jest types in your editor. `@types/jest` doesn't declare `jest.unstable_mockModule`, so `tests/jest-esm.d.ts` adds it. If your editor reports `Cannot find name 'expect'`, restart the TypeScript server.
 - **One behavior per test**, written as Arrange / Act / Assert, grouped in one `describe` per exported function (or per method, for classes).
 - **No real side effects.** Mock `node:child_process`, `src/adapters/*`, and the network. Stub or spy on `Logger` so tests don't write to the console.
-- **Assert typed errors.** Check the error type and message against the classes in `src/utils/errors.ts` (`DependencyError`, `VersionError`, `MissingDependencyError`), not just that something threw.
+- **Assert typed errors.** Check the error type and message against the classes in `src/utils/errors.ts` (`DependencyError`, `VersionError`, `MissingDependencyError`, `FileSystemError`), not just that something threw.
 
 ### Example
 
