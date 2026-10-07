@@ -1,8 +1,8 @@
-/** Minimum Node.js version `dev-setup` accepts, checked by `NodeToolchainAdapter.checkNodeVersion`. */
+/** Minimum Node.js version `dev-setup` accepts, checked by `dev-setup check` and `init`. */
 export const NODE_VERSION = "v24.0.0";
-/** Minimum pnpm version `dev-setup` accepts, checked by `NodeToolchainAdapter.checkPnpmVersion`. */
+/** Minimum pnpm version `dev-setup` accepts, checked by `dev-setup check` and `init`. */
 export const PNPM_VERSION = "12.0.0";
-/** Minimum Docker version `dev-setup check` accepts. */
+/** Minimum Docker version `dev-setup` accepts, checked by `dev-setup check` and `init`. */
 export const DOCKER_VERSION = "24.0.0";
 /** Tools `dev-setup check` can check, in report order. */
 export const CHECKABLE_TOOLS = ["node", "pnpm", "docker"] as const;

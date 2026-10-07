@@ -12,42 +12,6 @@ import { DependencyError } from '../utils/errors.js';
 import type { Logger } from '../utils/logger.js';
 import { compareVersions } from '../utils/validation.js';
 
-/**
- * Checks each dependency concurrently and logs any failure, so one missing or outdated
- * dependency doesn't stop the others from being checked.
- *
- * `node` and `pnpm` are version-checked against the minimums in `src/config/constants.ts`.
- * Any other name is currently only logged.
- *
- * @param dependencies Names of the dependencies to check (e.g. `['node', 'pnpm']`).
- * @param logger Logger that receives the results and errors.
- */
-async function checkDependencies(
-    dependencies: string[],
-    logger: Logger): Promise<void> {
-    await Promise.all(dependencies.map(async (dependency) => {
-        try {
-            await checkDependency(dependency, logger);
-        } catch (ex) {
-            logger.error(ex instanceof Error ? ex : new Error(String(ex)));
-        }
-    }));
-}
-
-async function checkDependency(dependency: string, logger: Logger): Promise<void> {
-    switch (dependency) {
-        case 'node':
-            await NodeToolchainAdapter.checkNodeVersion(logger);
-            break;
-        case 'pnpm':
-            await NodeToolchainAdapter.checkPnpmVersion(logger);
-            break;
-        default:
-            logger.info(`Dependency "${dependency}" is installed.`);
-            break;
-    }
-}
-
 const TOOLS: Record<ToolName, { minimumVersion: string; getVersion: () => Promise<string> }> = {
     node: { minimumVersion: NODE_VERSION, getVersion: () => NodeToolchainAdapter.getNodeVersion() },
     pnpm: { minimumVersion: PNPM_VERSION, getVersion: () => NodeToolchainAdapter.getPnpmVersion() },
@@ -169,11 +133,27 @@ function formatCompatibilityReport(report: ToolReport[]): string {
 }
 
 /**
+ * Summarizes the required tools in a compatibility report that are missing or outdated.
+ * Optional tools never count as failures.
+ *
+ * @param report The rows returned by {@link DependencyService.getCompatibilityReport}.
+ * @returns A one-line summary such as `2 required tool(s) missing or outdated: node (outdated),
+ * docker (missing)`, or `null` when every required tool is `ok`.
+ */
+function summarizeRequiredFailures(report: ToolReport[]): string | null {
+    const failed = report.filter((entry) => entry.required && entry.status !== 'ok');
+    if (failed.length === 0) return null;
+
+    const names = failed.map((entry) => `${entry.tool} (${entry.status})`).join(', ');
+    return `${failed.length} required tool(s) missing or outdated: ${names}`;
+}
+
+/**
  * Service that verifies the developer's required tools are installed and up to date,
  * delegating the version checks to `NodeToolchainAdapter` and `DockerAdapter`.
  */
 export const DependencyService = {
-    checkDependencies,
     getCompatibilityReport,
     formatCompatibilityReport,
+    summarizeRequiredFailures,
 };

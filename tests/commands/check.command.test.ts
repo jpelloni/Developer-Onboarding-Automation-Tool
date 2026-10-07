@@ -7,6 +7,7 @@ const { jest } = import.meta;
 
 const getCompatibilityReport = jest.fn<Promise<ToolReport[]>, [CompatibilityOptions, Logger]>();
 const formatCompatibilityReport = jest.fn<string, [ToolReport[]]>();
+const summarizeRequiredFailures = jest.fn<string | null, [ToolReport[]]>();
 const loggerInstance = {
     info: jest.fn(),
     warn: jest.fn(),
@@ -17,7 +18,7 @@ const loggerInstance = {
 const LoggerMock = jest.fn(() => loggerInstance);
 
 jest.unstable_mockModule('../../src/services/dependency.service.js', () => ({
-    DependencyService: { getCompatibilityReport, formatCompatibilityReport },
+    DependencyService: { getCompatibilityReport, formatCompatibilityReport, summarizeRequiredFailures },
 }));
 jest.unstable_mockModule('../../src/utils/logger.js', () => ({ Logger: LoggerMock }));
 
@@ -44,6 +45,7 @@ beforeEach(() => {
     process.exitCode = undefined;
     getCompatibilityReport.mockResolvedValue([entry({})]);
     formatCompatibilityReport.mockReturnValue('TABLE');
+    summarizeRequiredFailures.mockReturnValue(null);
 });
 
 afterAll(() => {
@@ -87,28 +89,23 @@ describe('createCheckCommand', () => {
         expect(loggerInstance.log).toHaveBeenCalledWith('Dependency report:\nTABLE');
     });
 
-    it('reports success and leaves the exit code unset when required tools are ok', async () => {
-        getCompatibilityReport.mockResolvedValue([
-            entry({}),
-            entry({ tool: 'docker', required: false, installedVersion: null, status: 'missing' }),
-        ]);
+    it('reports success and leaves the exit code unset when no required tool failed', async () => {
+        const report = [entry({})];
+        getCompatibilityReport.mockResolvedValue(report);
 
         await runCheck('check');
 
+        expect(summarizeRequiredFailures).toHaveBeenCalledWith(report);
         expect(loggerInstance.log).toHaveBeenCalledWith('All required tools are installed and up to date.');
         expect(process.exitCode).toBeUndefined();
     });
 
-    it('lists failed required tools and sets the exit code to 1', async () => {
-        getCompatibilityReport.mockResolvedValue([
-            entry({ status: 'outdated', installedVersion: 'v18.0.0' }),
-            entry({ tool: 'docker', required: true, installedVersion: null, status: 'missing' }),
-        ]);
+    it('logs the failure summary and sets the exit code to 1 when a required tool failed', async () => {
+        summarizeRequiredFailures.mockReturnValue('1 required tool(s) missing or outdated: node (outdated)');
 
         await runCheck('check');
 
-        expect(loggerInstance.log).toHaveBeenCalledWith(
-            '2 required tool(s) missing or outdated: node (outdated), docker (missing)');
+        expect(loggerInstance.log).toHaveBeenCalledWith('1 required tool(s) missing or outdated: node (outdated)');
         expect(process.exitCode).toBe(1);
     });
 

@@ -9,14 +9,31 @@ A modular CLI tool designed to streamline and standardize developer onboarding. 
 Sections marked **(planned)** describe features that aren't implemented yet.
 
 ### Environment Setup (`dev-setup init`)
-- Checks that Node.js and pnpm are installed and meet the minimum versions in `src/config/constants.ts`
-- Creates `.env` by copying `.env.example` in the current directory. An existing `.env` is never overwritten, and the step is skipped when there's no `.env.example`. Run with `--verbose` to see why it was skipped.
+The one command to run in a freshly cloned project. In order, it:
 
-Each step runs even if an earlier one fails; failures are logged as errors.
+1. Prints the same tool compatibility report as [`dev-setup check`](#dependency-checker-dev-setup-check). `--require` and `--skip` work the same way.
+2. Creates `.env` by copying `.env.example` in the current directory. An existing `.env` is never overwritten, and the step is skipped when there's no `.env.example`. Run with `--verbose` to see why it was skipped.
+3. If `.env` already existed, compares it with `.env.example` like [`dev-setup env`](#environment-variable-sync-dev-setup-env) and lists missing or unused variables.
+4. Ends with `Setup complete.`, or a list of the problems found.
+
+Each step runs even if an earlier one fails. `init` exits with code `1` when a required tool is missing or outdated, `.env` is missing variables, or a step fails.
+
+```text
+$ dev-setup init
+[LOG] Dependency report:
+Tool    Required  Minimum  Installed  Status
+node    yes       v24.0.0  v24.20.0   ok
+pnpm    yes       12.0.0   12.6.0     ok
+docker  no        24.0.0   29.8.2     ok
+
+[LOG] .env is missing 1 variable(s) defined in .env.example: API_KEY
+
+[LOG] Setup finished with 1 problem(s):
+  - .env is missing 1 variable(s).
+```
 
 **Planned:**
 - Install missing dependencies  
-- Sync and validate environment variables  
 - Start the development environment or devcontainer  
 - Run initial project checks/tests  
 
@@ -212,7 +229,7 @@ The generator enforces these rules:
 `src/cli.ts` doesn't change.
 
 ### Services
-Core business logic for onboarding, dependency checking, environment syncing, and bootstrapping. `DependencyService.checkDependencies` checks tool versions for `init`, `DependencyService.getCompatibilityReport` checks every tool concurrently and returns one row per tool for `check` (marking each required or optional), `EnvService.generateEnvFile` creates `.env` from `.env.example`, and `EnvService.compareEnvFiles` reports the variables `.env` is missing or doesn't need, and `ProjectBootstrapService.bootstrapProject` creates a project from the template. They log their results to the `Logger` they're given, and commands decide the exit code (for example, `env` sets `process.exitCode` to `1` when variables are missing).
+Core business logic for onboarding, dependency checking, environment syncing, and bootstrapping. `DependencyService.getCompatibilityReport` checks every tool concurrently and returns one row per tool, marking each required or optional, and `summarizeRequiredFailures` turns the failed required tools into one line for `check` and `init`. `EnvService.generateEnvFile` creates `.env` from `.env.example`, and `EnvService.compareEnvFiles` reports the variables `.env` is missing or doesn't need, and `ProjectBootstrapService.bootstrapProject` creates a project from the template. They log their results to the `Logger` they're given, and commands decide the exit code (for example, `env` sets `process.exitCode` to `1` when variables are missing). `init` composes these services rather than adding its own logic.
 
 ### Adapters
 Isolated interfaces for external systems (Docker, Node, filesystem, secrets managers). Adapters wrap failures from the underlying system in the typed errors from `src/utils/errors.ts`. `NodeToolchainAdapter` and `DockerAdapter` get tool versions through `getToolVersion` in `src/utils/exec.ts`, which throws `MissingDependencyError` when a tool can't be run. `FileSystemAdapter` throws `FileSystemError`. `FileSystemAdapter.copyFileIfAbsent` copies with `COPYFILE_EXCL`, and `FileSystemAdapter.writeFileIfAbsent` writes with the `wx` flag, so the existence check and the write happen in one step and an existing file is never overwritten.
@@ -227,7 +244,7 @@ Centralized constants, defaults, and the generated project template.
 `dev-setup bootstrap` creates projects from the files in `templates/node-ts/`. They're kept as real files so they're easy to edit, but `deno compile` only bundles code the program imports, so files read from disk at runtime would be missing from the standalone binaries. Instead, `scripts/generate-templates.mjs` embeds them in `src/config/project-template.ts`, the same approach as the command registry. It renames `_gitignore` to `.gitignore` and normalizes line endings to `\n`. The generator runs before `pnpm dev`, `build`, `test`, `test:coverage`, `test:pr`, and the `compile:*` scripts. The generated module is committed, and CI fails if it's out of date.
 
 ### Module exports
-Services, adapters, and utils have no `index.ts` barrel files. Import each module directly by its filename (e.g. `./services/dependency.service.js`). Services and adapters export a single named object that groups their public functions, such as `DependencyService.checkDependencies` and `NodeToolchainAdapter.checkNodeVersion`.
+Services, adapters, and utils have no `index.ts` barrel files. Import each module directly by its filename (e.g. `./services/dependency.service.js`). Services and adapters export a single named object that groups their public functions, such as `DependencyService.getCompatibilityReport` and `NodeToolchainAdapter.getNodeVersion`.
 
 ---
 
@@ -270,7 +287,7 @@ Tests live under `tests/` and mirror the `src/` directory structure, using the s
 - **Editor type checking.** The root `tsconfig.json` only covers `src/`, so `tests/tsconfig.json` extends it to cover `tests/`, which loads the Jest types in your editor. `@types/jest` doesn't declare `jest.unstable_mockModule`, so `tests/jest-esm.d.ts` adds it. If your editor reports `Cannot find name 'expect'`, restart the TypeScript server.
 - **One behavior per test**, written as Arrange / Act / Assert, grouped in one `describe` per exported function (or per method, for classes).
 - **No real side effects.** Mock `node:child_process`, `src/adapters/*`, and the network. Stub or spy on `Logger` so tests don't write to the console.
-- **Assert typed errors.** Check the error type and message against the classes in `src/utils/errors.ts` (`DependencyError`, `VersionError`, `MissingDependencyError`, `FileSystemError`, `BootstrapError`), not just that something threw.
+- **Assert typed errors.** Check the error type and message against the classes in `src/utils/errors.ts` (`DependencyError`, `MissingDependencyError`, `FileSystemError`, `BootstrapError`), not just that something threw.
 
 ### Example
 
