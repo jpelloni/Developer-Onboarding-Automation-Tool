@@ -6,8 +6,13 @@ const fsConstants = { F_OK: 0, COPYFILE_EXCL: 1 };
 const access = jest.fn<Promise<void>, [string, number]>();
 const copyFile = jest.fn<Promise<void>, [string, string, number]>();
 const readFile = jest.fn<Promise<string>, [string, string]>();
+const readdir = jest.fn<Promise<string[]>, [string]>();
+const mkdir = jest.fn<Promise<string | undefined>, [string, { recursive: boolean }]>();
+const writeFile = jest.fn<Promise<void>, [string, string, { encoding: string; flag: string }]>();
 
-jest.unstable_mockModule('node:fs/promises', () => ({ access, copyFile, readFile, constants: fsConstants }));
+jest.unstable_mockModule('node:fs/promises', () => ({
+    access, copyFile, readFile, readdir, mkdir, writeFile, constants: fsConstants,
+}));
 
 const { FileSystemAdapter } = await import('../../src/adapters/file-system.adapter.js');
 
@@ -18,6 +23,9 @@ beforeEach(() => {
     access.mockReset().mockResolvedValue(undefined);
     copyFile.mockReset().mockResolvedValue(undefined);
     readFile.mockReset().mockResolvedValue('PORT=3000\n');
+    readdir.mockReset().mockResolvedValue([]);
+    mkdir.mockReset().mockResolvedValue(undefined);
+    writeFile.mockReset().mockResolvedValue(undefined);
 });
 
 describe('FileSystemAdapter', () => {
@@ -118,6 +126,77 @@ describe('FileSystemAdapter', () => {
             expect(error).toBeInstanceOf(FileSystemError);
             expect((error as Error).message).toBe('Failed to read ".env".');
             expect((error as Error).cause).toBe(cause);
+        });
+    });
+
+    describe('listDirectory', () => {
+        it('returns the entry names', async () => {
+            readdir.mockResolvedValue(['package.json', 'src']);
+
+            const result = await FileSystemAdapter.listDirectory('my-service');
+
+            expect(readdir).toHaveBeenCalledWith('my-service');
+            expect(result).toEqual(['package.json', 'src']);
+        });
+
+        it('returns null when the directory does not exist', async () => {
+            readdir.mockRejectedValue(errnoError('ENOENT'));
+
+            const result = await FileSystemAdapter.listDirectory('my-service');
+
+            expect(result).toBeNull();
+        });
+
+        it('throws a FileSystemError, keeping the cause, for other failures', async () => {
+            const cause = errnoError('ENOTDIR');
+            readdir.mockRejectedValue(cause);
+
+            const error = await FileSystemAdapter.listDirectory('my-service').catch((e: unknown) => e);
+
+            expect(error).toBeInstanceOf(FileSystemError);
+            expect((error as Error).message).toBe('Failed to read the directory "my-service".');
+            expect((error as Error).cause).toBe(cause);
+        });
+    });
+
+    describe('writeFileIfAbsent', () => {
+        it('creates the parent directories', async () => {
+            await FileSystemAdapter.writeFileIfAbsent('my-service/src/index.ts', 'code');
+
+            expect(mkdir).toHaveBeenCalledWith('my-service/src', { recursive: true });
+        });
+
+        it('writes UTF-8 with the wx flag so an existing file is never overwritten', async () => {
+            await FileSystemAdapter.writeFileIfAbsent('my-service/src/index.ts', 'code');
+
+            expect(writeFile).toHaveBeenCalledWith('my-service/src/index.ts', 'code', { encoding: 'utf8', flag: 'wx' });
+        });
+
+        it('returns true when the file was written', async () => {
+            const result = await FileSystemAdapter.writeFileIfAbsent('my-service/src/index.ts', 'code');
+
+            expect(result).toBe(true);
+        });
+
+        it('returns false when the file already exists', async () => {
+            writeFile.mockRejectedValue(errnoError('EEXIST'));
+
+            const result = await FileSystemAdapter.writeFileIfAbsent('my-service/src/index.ts', 'code');
+
+            expect(result).toBe(false);
+        });
+
+        it('throws a FileSystemError, keeping the cause, when a directory cannot be created', async () => {
+            const cause = errnoError('EACCES');
+            mkdir.mockRejectedValue(cause);
+
+            const error = await FileSystemAdapter.writeFileIfAbsent('my-service/src/index.ts', 'code')
+                .catch((e: unknown) => e);
+
+            expect(error).toBeInstanceOf(FileSystemError);
+            expect((error as Error).message).toBe('Failed to write "my-service/src/index.ts".');
+            expect((error as Error).cause).toBe(cause);
+            expect(writeFile).not.toHaveBeenCalled();
         });
     });
 });

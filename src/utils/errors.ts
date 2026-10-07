@@ -53,3 +53,17 @@ export class FileSystemError extends Error {
         this.name = 'FileSystemError';
     }
 }
+
+/**
+ * A project can't be bootstrapped (e.g. the name is invalid or the target directory isn't empty).
+ *
+ * @param message Description of the problem.
+ * @param cause The underlying error, exposed as `cause` when provided.
+ */
+export class BootstrapError extends Error {
+    constructor(message: string, cause?: Error) {
+        super(message);
+        if (cause) this.cause = cause;
+        this.name = 'BootstrapError';
+    }
+}

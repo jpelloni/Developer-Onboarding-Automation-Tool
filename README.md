@@ -52,10 +52,23 @@ $ dev-setup env
 **Planned:**
 - Optional integration with secrets managers  
 
-### Project Bootstrap (`dev-setup bootstrap`) (planned)
-- Generates folder structure and boilerplate code  
-- Sets up linting, formatting, and testing configs  
-- Ensures consistent project scaffolding  
+### Project Bootstrap (`dev-setup bootstrap`)
+- `dev-setup bootstrap <name>` creates a new Node.js + TypeScript + pnpm project in `./<name>` from the project template in [`templates/node-ts/`](templates/node-ts/): `package.json` with `dev`, `build`, `start`, `test`, `lint`, and `format` scripts, `tsconfig.json`, ESLint, Prettier, and Jest (native ESM) configs, a starter module and test, `.gitignore`, `.env.example`, `pnpm-workspace.yaml`, and a README.
+- `<name>` is used as the directory and the `package.json` name, so it must be a valid unscoped npm package name (lowercase letters, digits, `.`, `_`, and `-`, starting with a letter or digit).
+- Refuses to write into a directory that exists and isn't empty, and never overwrites a file. `--dry-run` lists the files without writing them.
+- Doesn't install dependencies or initialize Git. It prints the next steps instead: `cd <name>`, `pnpm install`, `dev-setup init`. Exits with code `1` on an invalid name, a non-empty directory, or a write failure.
+
+```text
+$ dev-setup bootstrap my-service
+[LOG] Created 13 file(s) in my-service/. Next steps:
+  cd my-service
+  pnpm install
+  dev-setup init
+```
+
+#### Updating the template
+
+Edit the files in `templates/node-ts/` directly; they're ordinary files. `{{name}}` anywhere in a file is replaced with the project name. Store a gitignore as `_gitignore` (it's created as `.gitignore`), so it doesn't apply to this repo. After editing, run `pnpm generate:templates`, or any script that runs it (see [Project template](#project-template)), and commit both the template and the regenerated `src/config/project-template.ts`.
 
 ### Devcontainer Template
 - Preconfigured development environment  
@@ -73,14 +86,14 @@ dev-setup/
 │   │   ├── init.command.ts       # dev-setup init
 │   │   ├── check.command.ts      # dev-setup check
 │   │   ├── env.command.ts        # dev-setup env
-│   │   ├── bootstrap.command.ts  # Placeholder
+│   │   ├── bootstrap.command.ts  # dev-setup bootstrap
 │   │   └── registry.ts           # Generated list of commands (do not edit)
 │   │
 │   ├── services/
 │   │   ├── dependency.service.ts  # Checks tool versions and builds the compatibility report
 │   │   ├── env.service.ts         # Generates .env and compares it with .env.example
 │   │   ├── devcontainer.service.ts
-│   │   └── project-bootstrap.service.ts
+│   │   └── project-bootstrap.service.ts  # Creates projects from the template
 │   │
 │   ├── adapters/
 │   │   ├── docker.adapter.ts
@@ -97,6 +110,7 @@ dev-setup/
 │   │
 │   ├── config/
 │   │   ├── constants.ts
+│   │   ├── project-template.ts  # Generated from templates/node-ts/ (do not edit)
 │   │   └── defaults.ts
 │   │
 │   ├── cli.ts              # Builds the dev-setup program (createProgram)
@@ -104,19 +118,24 @@ dev-setup/
 │
 ├── tests/                  # Mirrors src/ — one *.test.ts per source file
 │   ├── commands/
+│   │   ├── bootstrap.command.test.ts
 │   │   ├── check.command.test.ts
 │   │   ├── env.command.test.ts
 │   │   ├── init.command.test.ts
 │   │   └── registry.test.ts
 │   ├── services/
 │   │   ├── dependency.service.test.ts
-│   │   └── env.service.test.ts
+│   │   ├── env.service.test.ts
+│   │   └── project-bootstrap.service.test.ts
 │   ├── adapters/
 │   │   ├── docker.adapter.test.ts
 │   │   ├── file-system.adapter.test.ts
 │   │   └── node-toolchain.adapter.test.ts
+│   ├── config/
+│   │   └── project-template.test.ts
 │   ├── scripts/
-│   │   └── generate-commands.test.ts
+│   │   ├── generate-commands.test.ts
+│   │   └── generate-templates.test.ts
 │   ├── utils/
 │   │   ├── env-file.test.ts
 │   │   ├── errors.test.ts
@@ -134,7 +153,12 @@ dev-setup/
 ├── scripts/
 │   ├── check-pr.mjs              # PR policy check (run by CI and `pnpm check:pr`)
 │   ├── generate-commands.mjs     # Writes src/commands/registry.ts
-│   └── generate-commands.d.mts   # Types for importing the generator in tests
+│   ├── generate-commands.d.mts   # Types for importing the generator in tests
+│   ├── generate-templates.mjs    # Writes src/config/project-template.ts
+│   └── generate-templates.d.mts  # Types for importing the generator in tests
+│
+├── templates/
+│   └── node-ts/            # Project template for dev-setup bootstrap (edit these files)
 │
 ├── .devcontainer/
 │   ├── devcontainer.json
@@ -188,16 +212,19 @@ The generator enforces these rules:
 `src/cli.ts` doesn't change.
 
 ### Services
-Core business logic for onboarding, dependency checking, environment syncing, and bootstrapping. `DependencyService.checkDependencies` checks tool versions for `init`, `DependencyService.getCompatibilityReport` checks every tool concurrently and returns one row per tool for `check` (marking each required or optional), `EnvService.generateEnvFile` creates `.env` from `.env.example`, and `EnvService.compareEnvFiles` reports the variables `.env` is missing or doesn't need. They log their results to the `Logger` they're given, and commands decide the exit code (for example, `env` sets `process.exitCode` to `1` when variables are missing).
+Core business logic for onboarding, dependency checking, environment syncing, and bootstrapping. `DependencyService.checkDependencies` checks tool versions for `init`, `DependencyService.getCompatibilityReport` checks every tool concurrently and returns one row per tool for `check` (marking each required or optional), `EnvService.generateEnvFile` creates `.env` from `.env.example`, and `EnvService.compareEnvFiles` reports the variables `.env` is missing or doesn't need, and `ProjectBootstrapService.bootstrapProject` creates a project from the template. They log their results to the `Logger` they're given, and commands decide the exit code (for example, `env` sets `process.exitCode` to `1` when variables are missing).
 
 ### Adapters
-Isolated interfaces for external systems (Docker, Node, filesystem, secrets managers). Adapters wrap failures from the underlying system in the typed errors from `src/utils/errors.ts`. `NodeToolchainAdapter` and `DockerAdapter` get tool versions through `getToolVersion` in `src/utils/exec.ts`, which throws `MissingDependencyError` when a tool can't be run. `FileSystemAdapter` throws `FileSystemError`, and `FileSystemAdapter.copyFileIfAbsent` copies with `COPYFILE_EXCL`, so the existence check and the copy happen in one step and an existing file is never overwritten.
+Isolated interfaces for external systems (Docker, Node, filesystem, secrets managers). Adapters wrap failures from the underlying system in the typed errors from `src/utils/errors.ts`. `NodeToolchainAdapter` and `DockerAdapter` get tool versions through `getToolVersion` in `src/utils/exec.ts`, which throws `MissingDependencyError` when a tool can't be run. `FileSystemAdapter` throws `FileSystemError`. `FileSystemAdapter.copyFileIfAbsent` copies with `COPYFILE_EXCL`, and `FileSystemAdapter.writeFileIfAbsent` writes with the `wx` flag, so the existence check and the write happen in one step and an existing file is never overwritten.
 
 ### Utils
 Shared helpers for logging, running version commands (`getToolVersion`), version parsing and comparison (`extractVersion`, `compareVersions`), `.env` parsing (`EnvFile.parseEnvKeys`), and error handling.
 
 ### Config
-Centralized constants, defaults, and templates.
+Centralized constants, defaults, and the generated project template.
+
+### Project template
+`dev-setup bootstrap` creates projects from the files in `templates/node-ts/`. They're kept as real files so they're easy to edit, but `deno compile` only bundles code the program imports, so files read from disk at runtime would be missing from the standalone binaries. Instead, `scripts/generate-templates.mjs` embeds them in `src/config/project-template.ts`, the same approach as the command registry. It renames `_gitignore` to `.gitignore` and normalizes line endings to `\n`. The generator runs before `pnpm dev`, `build`, `test`, `test:coverage`, `test:pr`, and the `compile:*` scripts. The generated module is committed, and CI fails if it's out of date.
 
 ### Module exports
 Services, adapters, and utils have no `index.ts` barrel files. Import each module directly by its filename (e.g. `./services/dependency.service.js`). Services and adapters export a single named object that groups their public functions, such as `DependencyService.checkDependencies` and `NodeToolchainAdapter.checkNodeVersion`.
@@ -243,7 +270,7 @@ Tests live under `tests/` and mirror the `src/` directory structure, using the s
 - **Editor type checking.** The root `tsconfig.json` only covers `src/`, so `tests/tsconfig.json` extends it to cover `tests/`, which loads the Jest types in your editor. `@types/jest` doesn't declare `jest.unstable_mockModule`, so `tests/jest-esm.d.ts` adds it. If your editor reports `Cannot find name 'expect'`, restart the TypeScript server.
 - **One behavior per test**, written as Arrange / Act / Assert, grouped in one `describe` per exported function (or per method, for classes).
 - **No real side effects.** Mock `node:child_process`, `src/adapters/*`, and the network. Stub or spy on `Logger` so tests don't write to the console.
-- **Assert typed errors.** Check the error type and message against the classes in `src/utils/errors.ts` (`DependencyError`, `VersionError`, `MissingDependencyError`, `FileSystemError`), not just that something threw.
+- **Assert typed errors.** Check the error type and message against the classes in `src/utils/errors.ts` (`DependencyError`, `VersionError`, `MissingDependencyError`, `FileSystemError`, `BootstrapError`), not just that something threw.
 
 ### Example
 
