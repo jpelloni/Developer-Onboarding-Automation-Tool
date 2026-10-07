@@ -1,4 +1,4 @@
-import { access, constants, copyFile } from 'node:fs/promises';
+import { access, constants, copyFile, readFile } from 'node:fs/promises';
 import { FileSystemError } from '../utils/errors.js';
 
 const toError = (error: unknown): Error => (error instanceof Error ? error : new Error(String(error)));
@@ -44,6 +44,21 @@ const copyFileIfAbsent = async (source: string, destination: string): Promise<bo
 };
 
 /**
+ * Reads a text file as UTF-8.
+ *
+ * @param path Path of the file to read.
+ * @returns The file's contents.
+ * @throws {FileSystemError} When the file can't be read (e.g. it's missing or isn't readable).
+ */
+const readTextFile = async (path: string): Promise<string> => {
+    try {
+        return await readFile(path, 'utf8');
+    } catch (error) {
+        throw new FileSystemError(`Failed to read "${path}".`, toError(error));
+    }
+};
+
+/**
  * Adapter for the local filesystem, wrapping `node:fs` failures in {@link FileSystemError}.
  */
-export const FileSystemAdapter = { exists, copyFileIfAbsent };
+export const FileSystemAdapter = { exists, copyFileIfAbsent, readTextFile };

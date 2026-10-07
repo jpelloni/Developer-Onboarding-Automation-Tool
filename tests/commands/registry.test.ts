@@ -2,11 +2,16 @@ import { Command } from 'commander';
 import path from 'node:path';
 import { generate } from '../../scripts/generate-commands.mjs';
 import { commandFactories } from '../../src/commands/registry.js';
+import createEnvCommand from '../../src/commands/env.command.js';
 import createInitCommand from '../../src/commands/init.command.js';
 
 describe('commandFactories', () => {
     it('includes the init command', () => {
         expect(commandFactories).toContain(createInitCommand);
+    });
+
+    it('includes the env command', () => {
+        expect(commandFactories).toContain(createEnvCommand);
     });
 
     it('contains only factories that return a Command', () => {
