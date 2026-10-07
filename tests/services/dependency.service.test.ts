@@ -1,25 +1,23 @@
 import { DOCKER_VERSION, NODE_VERSION, PNPM_VERSION } from '../../src/config/constants.js';
 import type { ToolReport } from '../../src/services/dependency.service.js';
-import { DependencyError, MissingDependencyError, VersionError } from '../../src/utils/errors.js';
+import { DependencyError, MissingDependencyError } from '../../src/utils/errors.js';
 import type { Logger } from '../../src/utils/logger.js';
 
 const { jest } = import.meta;
 
-const checkNodeVersion = jest.fn<Promise<void>, [Logger]>();
-const checkPnpmVersion = jest.fn<Promise<void>, [Logger]>();
 const getNodeVersion = jest.fn<Promise<string>, []>();
 const getPnpmVersion = jest.fn<Promise<string>, []>();
 const getDockerVersion = jest.fn<Promise<string>, []>();
 
 jest.unstable_mockModule('../../src/adapters/node-toolchain.adapter.js', () => ({
-    NodeToolchainAdapter: { checkNodeVersion, checkPnpmVersion, getNodeVersion, getPnpmVersion },
+    NodeToolchainAdapter: { getNodeVersion, getPnpmVersion },
 }));
 jest.unstable_mockModule('../../src/adapters/docker.adapter.js', () => ({
     DockerAdapter: { getDockerVersion },
 }));
 
 const {
-    DependencyService: { checkDependencies, getCompatibilityReport, formatCompatibilityReport },
+    DependencyService: { getCompatibilityReport, formatCompatibilityReport, summarizeRequiredFailures },
 } = await import('../../src/services/dependency.service.js');
 
 const createLogger = () => ({
@@ -31,61 +29,9 @@ const createLogger = () => ({
 });
 
 beforeEach(() => {
-    checkNodeVersion.mockReset().mockResolvedValue(undefined);
-    checkPnpmVersion.mockReset().mockResolvedValue(undefined);
     getNodeVersion.mockReset().mockResolvedValue('v24.1.0');
     getPnpmVersion.mockReset().mockResolvedValue('12.6.0');
     getDockerVersion.mockReset().mockResolvedValue('27.3.1');
-});
-
-describe('checkDependencies', () => {
-    it('checks node and pnpm through the NodeToolchainAdapter', async () => {
-        const logger = createLogger();
-
-        await checkDependencies(['node', 'pnpm'], logger as unknown as Logger);
-
-        expect(checkNodeVersion).toHaveBeenCalledWith(logger);
-        expect(checkPnpmVersion).toHaveBeenCalledWith(logger);
-        expect(logger.error).not.toHaveBeenCalled();
-    });
-
-    it('logs other dependencies as installed without checking them', async () => {
-        const logger = createLogger();
-
-        await checkDependencies(['docker'], logger as unknown as Logger);
-
-        expect(logger.info).toHaveBeenCalledWith('Dependency "docker" is installed.');
-        expect(checkNodeVersion).not.toHaveBeenCalled();
-    });
-
-    it('logs adapter errors with their original type', async () => {
-        const logger = createLogger();
-        const versionError = new VersionError('Node v1.0.0 is older than the required v20.0.0.');
-        checkNodeVersion.mockRejectedValue(versionError);
-
-        await checkDependencies(['node'], logger as unknown as Logger);
-
-        expect(logger.error).toHaveBeenCalledWith(versionError);
-    });
-
-    it('keeps checking other dependencies when one fails', async () => {
-        const logger = createLogger();
-        checkNodeVersion.mockRejectedValue(new MissingDependencyError('Failed to run "node --version".'));
-
-        await checkDependencies(['node', 'pnpm'], logger as unknown as Logger);
-
-        expect(checkPnpmVersion).toHaveBeenCalled();
-        expect(logger.error).toHaveBeenCalledTimes(1);
-    });
-
-    it('wraps non-Error rejections in an Error before logging', async () => {
-        const logger = createLogger();
-        checkPnpmVersion.mockRejectedValue('boom');
-
-        await checkDependencies(['pnpm'], logger as unknown as Logger);
-
-        expect(logger.error).toHaveBeenCalledWith(new Error('boom'));
-    });
 });
 
 describe('getCompatibilityReport', () => {
@@ -211,5 +157,33 @@ describe('formatCompatibilityReport', () => {
         const result = formatCompatibilityReport([]);
 
         expect(result).toBe('Tool  Required  Minimum  Installed  Status');
+    });
+});
+
+describe('summarizeRequiredFailures', () => {
+    const row = (overrides: Partial<ToolReport>): ToolReport => ({
+        tool: 'node', required: true, minimumVersion: 'v24.0.0', installedVersion: 'v24.1.0', status: 'ok', ...overrides,
+    });
+
+    it('returns null when every required tool is ok', () => {
+        const result = summarizeRequiredFailures([row({}), row({ tool: 'pnpm' })]);
+
+        expect(result).toBeNull();
+    });
+
+    it('ignores failed optional tools', () => {
+        const result = summarizeRequiredFailures([row({ tool: 'docker', required: false, status: 'missing' })]);
+
+        expect(result).toBeNull();
+    });
+
+    it('lists failed required tools with their status', () => {
+        const result = summarizeRequiredFailures([
+            row({ status: 'outdated' }),
+            row({ tool: 'pnpm' }),
+            row({ tool: 'docker', status: 'missing', installedVersion: null }),
+        ]);
+
+        expect(result).toBe('2 required tool(s) missing or outdated: node (outdated), docker (missing)');
     });
 });

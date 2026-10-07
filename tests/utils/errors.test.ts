@@ -1,8 +1,7 @@
-import { BootstrapError, DependencyError, FileSystemError, MissingDependencyError, VersionError } from '../../src/utils/errors.js';
+import { BootstrapError, DependencyError, FileSystemError, MissingDependencyError } from '../../src/utils/errors.js';
 
 const errorClasses = [
     ['DependencyError', DependencyError],
-    ['VersionError', VersionError],
     ['MissingDependencyError', MissingDependencyError],
     ['FileSystemError', FileSystemError],
     ['BootstrapError', BootstrapError],

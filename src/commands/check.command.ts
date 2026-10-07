@@ -28,10 +28,9 @@ export default function createCheckCommand(): Command {
                     { require: options['require'], skip: options['skip'] }, logger);
                 logger.log(`Dependency report:\n${DependencyService.formatCompatibilityReport(report)}`);
 
-                const failed = report.filter((entry) => entry.required && entry.status !== 'ok');
-                if (failed.length > 0) {
-                    const names = failed.map((entry) => `${entry.tool} (${entry.status})`).join(', ');
-                    logger.log(`${failed.length} required tool(s) missing or outdated: ${names}`);
+                const failures = DependencyService.summarizeRequiredFailures(report);
+                if (failures) {
+                    logger.log(failures);
                     process.exitCode = 1;
                 } else {
                     logger.log('All required tools are installed and up to date.');

@@ -17,9 +17,9 @@ In addition:
 - `src/adapters/*` are the boundary to external systems (Docker, filesystem, secrets, Node).
   Mock them when testing services and commands.
 - Stub `Logger` (`info`/`warn`/`error`/`debug`/`log`) or spy on `console`. Tests must not print.
-- Assert the typed errors from `src/utils/errors.ts` (`DependencyError`, `VersionError`,
+- Assert the typed errors from `src/utils/errors.ts` (`DependencyError`,
   `MissingDependencyError`, `FileSystemError`, `BootstrapError`), not generic `Error`.
-- For functions that `Promise.all` over independent checks (e.g. `checkDependencies`), test
+- For functions that `Promise.all` over independent checks (e.g. `getCompatibilityReport`), test
   that one failure doesn't abort the others.
 - `src/utils` uses flat filenames (`logger.ts`, `errors.ts`, `validation.ts`), imported with a
   `.js` extension. There are no `*.util.ts` files.
