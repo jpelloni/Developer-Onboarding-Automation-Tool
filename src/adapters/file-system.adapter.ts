@@ -1,4 +1,5 @@
-import { access, constants, copyFile, readFile } from 'node:fs/promises';
+import { access, constants, copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { FileSystemError } from '../utils/errors.js';
 
 const toError = (error: unknown): Error => (error instanceof Error ? error : new Error(String(error)));
@@ -59,6 +60,42 @@ const readTextFile = async (path: string): Promise<string> => {
 };
 
 /**
+ * Lists the names of the entries in a directory.
+ *
+ * @param path Path of the directory.
+ * @returns The entry names, or `null` when `path` doesn't exist.
+ * @throws {FileSystemError} When `path` isn't a directory or can't be read.
+ */
+const listDirectory = async (path: string): Promise<string[] | null> => {
+    try {
+        return await readdir(path);
+    } catch (error) {
+        if (errorCode(error) === 'ENOENT') return null;
+        throw new FileSystemError(`Failed to read the directory "${path}".`, toError(error));
+    }
+};
+
+/**
+ * Writes a UTF-8 text file, creating its parent directories, unless the file already exists.
+ * The check and the write are a single operation, so an existing file is never overwritten.
+ *
+ * @param path Path of the file to write.
+ * @param contents Text to write.
+ * @returns `true` when the file was written; `false` when it already exists.
+ * @throws {FileSystemError} When a directory can't be created or the file can't be written.
+ */
+const writeFileIfAbsent = async (path: string, contents: string): Promise<boolean> => {
+    try {
+        await mkdir(dirname(path), { recursive: true });
+        await writeFile(path, contents, { encoding: 'utf8', flag: 'wx' });
+        return true;
+    } catch (error) {
+        if (errorCode(error) === 'EEXIST') return false;
+        throw new FileSystemError(`Failed to write "${path}".`, toError(error));
+    }
+};
+
+/**
  * Adapter for the local filesystem, wrapping `node:fs` failures in {@link FileSystemError}.
  */
-export const FileSystemAdapter = { exists, copyFileIfAbsent, readTextFile };
+export const FileSystemAdapter = { exists, copyFileIfAbsent, readTextFile, listDirectory, writeFileIfAbsent };

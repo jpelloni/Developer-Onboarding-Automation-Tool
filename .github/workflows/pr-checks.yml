@@ -23,9 +23,12 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Before the tests, which regenerate the registry and would hide a stale committed copy.
+      # Before the tests, which regenerate these files and would hide a stale committed copy.
       - name: Check the command registry is up to date
         run: node scripts/generate-commands.mjs --check
+
+      - name: Check the project template module is up to date
+        run: node scripts/generate-templates.mjs --check
 
       - name: Run unit tests with coverage
         run: pnpm test:pr

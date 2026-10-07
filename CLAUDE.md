@@ -18,7 +18,7 @@ In addition:
   Mock them when testing services and commands.
 - Stub `Logger` (`info`/`warn`/`error`/`debug`/`log`) or spy on `console`. Tests must not print.
 - Assert the typed errors from `src/utils/errors.ts` (`DependencyError`, `VersionError`,
-  `MissingDependencyError`, `FileSystemError`), not generic `Error`.
+  `MissingDependencyError`, `FileSystemError`, `BootstrapError`), not generic `Error`.
 - For functions that `Promise.all` over independent checks (e.g. `checkDependencies`), test
   that one failure doesn't abort the others.
 - `src/utils` uses flat filenames (`logger.ts`, `errors.ts`, `validation.ts`), imported with a
