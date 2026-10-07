@@ -1,9 +1,11 @@
 import { Command } from 'commander';
+import { FileSystemError } from '../../src/utils/errors.js';
 import type { Logger } from '../../src/utils/logger.js';
 
 const { jest } = import.meta;
 
 const checkDependencies = jest.fn<Promise<void>, [string[], Logger]>();
+const generateEnvFile = jest.fn<Promise<string>, [Logger]>();
 const loggerInstance = {
     info: jest.fn(),
     warn: jest.fn(),
@@ -15,6 +17,9 @@ const LoggerMock = jest.fn(() => loggerInstance);
 
 jest.unstable_mockModule('../../src/services/dependency.service.js', () => ({
     DependencyService: { checkDependencies },
+}));
+jest.unstable_mockModule('../../src/services/env.service.js', () => ({
+    EnvService: { generateEnvFile },
 }));
 jest.unstable_mockModule('../../src/utils/logger.js', () => ({ Logger: LoggerMock }));
 
@@ -30,6 +35,7 @@ const runInit = (...args: string[]) => new Command()
 beforeEach(() => {
     jest.clearAllMocks();
     checkDependencies.mockResolvedValue(undefined);
+    generateEnvFile.mockResolvedValue('created');
 });
 
 describe('createInitCommand', () => {
@@ -74,5 +80,30 @@ describe('createInitCommand', () => {
         await runInit();
 
         expect(finished).toBe(true);
+    });
+
+    it('generates .env with the created logger after the dependency check', async () => {
+        await runInit();
+
+        expect(generateEnvFile).toHaveBeenCalledWith(loggerInstance);
+        expect(checkDependencies.mock.invocationCallOrder[0])
+            .toBeLessThan(generateEnvFile.mock.invocationCallOrder[0] as number);
+    });
+
+    it('logs .env generation errors instead of throwing', async () => {
+        const error = new FileSystemError('Failed to copy ".env.example" to ".env".');
+        generateEnvFile.mockRejectedValue(error);
+
+        await expect(runInit()).resolves.toBeDefined();
+
+        expect(loggerInstance.error).toHaveBeenCalledWith(error);
+    });
+
+    it('wraps non-Error .env generation failures in an Error before logging', async () => {
+        generateEnvFile.mockRejectedValue('boom');
+
+        await runInit();
+
+        expect(loggerInstance.error).toHaveBeenCalledWith(new Error('boom'));
     });
 });

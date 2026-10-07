@@ -1,13 +1,15 @@
 import { Command } from "commander";
 import { DependencyService } from '../services/dependency.service.js';
+import { EnvService } from '../services/env.service.js';
 import { Logger } from '../utils/logger.js';
 
 /**
  * Builds the `init` command, which starts the developer onboarding setup.
  *
  * When run, it creates a {@link Logger} from the global `--verbose` and `--debug` options,
- * then checks that Node.js and pnpm are installed and meet the minimum versions. Dependency
- * failures are logged rather than thrown.
+ * checks that Node.js and pnpm are installed and meet the minimum versions, then creates `.env`
+ * from `.env.example` if `.env` doesn't exist yet. Failures are logged rather than thrown, so
+ * one failed step doesn't stop the others.
  *
  * @returns The `init` command, which `src/cli.ts` adds to the program through the registry.
  */
@@ -19,5 +21,10 @@ export default function createInitCommand(): Command {
             const logger = new Logger(options['verbose'], options['debug']);
             logger.log('Developer onboarding setup initialized.');
             await DependencyService.checkDependencies(['node', 'pnpm'], logger);
+            try {
+                await EnvService.generateEnvFile(logger);
+            } catch (ex) {
+                logger.error(ex instanceof Error ? ex : new Error(String(ex)));
+            }
         });
 }

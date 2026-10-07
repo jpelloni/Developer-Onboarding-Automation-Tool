@@ -13,9 +13,9 @@
     "check:pr": "node scripts/check-pr.mjs",
     "generate:commands": "node scripts/generate-commands.mjs",
     "lint": "eslint src",
-    "compile:win": "node scripts/generate-commands.mjs && deno compile --allow-sys --allow-read --allow-env --allow-run --target x86_64-pc-windows-msvc --sloppy-imports --output ./out/win/dev-setup.exe ./src/index.ts",
-    "compile:linux": "node scripts/generate-commands.mjs && deno compile --allow-sys --allow-read --allow-env --allow-run --target x86_64-unknown-linux-gnu --sloppy-imports --output ./out/linux/dev-setup ./src/index.ts",
-    "compile:mac": "node scripts/generate-commands.mjs && deno compile --allow-sys --allow-read --allow-env --allow-run --target x86_64-apple-darwin --sloppy-imports --output ./out/mac/dev-setup ./src/index.ts",
+    "compile:win": "node scripts/generate-commands.mjs && deno compile --allow-sys --allow-read --allow-env --allow-run --allow-write --target x86_64-pc-windows-msvc --sloppy-imports --output ./out/win/dev-setup.exe ./src/index.ts",
+    "compile:linux": "node scripts/generate-commands.mjs && deno compile --allow-sys --allow-read --allow-env --allow-run --allow-write --target x86_64-unknown-linux-gnu --sloppy-imports --output ./out/linux/dev-setup ./src/index.ts",
+    "compile:mac": "node scripts/generate-commands.mjs && deno compile --allow-sys --allow-read --allow-env --allow-run --allow-write --target x86_64-apple-darwin --sloppy-imports --output ./out/mac/dev-setup ./src/index.ts",
     "compile": "pnpm run compile:win && pnpm run compile:linux && pnpm run compile:mac"
   },
   "keywords": [],

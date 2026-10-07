@@ -39,3 +39,17 @@ export class MissingDependencyError extends Error {
         this.name = 'MissingDependencyError';
     }
 }
+
+/**
+ * A filesystem operation (checking, reading, or copying a file) failed.
+ *
+ * @param message Description of the failed operation.
+ * @param cause The underlying error (e.g. an `EACCES` error from `node:fs`), exposed as `cause` when provided.
+ */
+export class FileSystemError extends Error {
+    constructor(message: string, cause?: Error) {
+        super(message);
+        if (cause) this.cause = cause;
+        this.name = 'FileSystemError';
+    }
+}

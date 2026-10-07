@@ -1,9 +1,10 @@
-import { DependencyError, MissingDependencyError, VersionError } from '../../src/utils/errors.js';
+import { DependencyError, FileSystemError, MissingDependencyError, VersionError } from '../../src/utils/errors.js';
 
 const errorClasses = [
     ['DependencyError', DependencyError],
     ['VersionError', VersionError],
     ['MissingDependencyError', MissingDependencyError],
+    ['FileSystemError', FileSystemError],
 ] as const;
 
 describe.each(errorClasses)('%s', (name, ErrorClass) => {
