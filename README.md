@@ -20,10 +20,22 @@ Each step runs even if an earlier one fails; failures are logged as errors.
 - Start the development environment or devcontainer  
 - Run initial project checks/tests  
 
-### Dependency Checker (`dev-setup check`) (planned)
-- Verifies Node, pnpm, and Docker versions  
-- Confirms required CLI tools are installed  
-- Outputs a structured compatibility report  
+### Dependency Checker (`dev-setup check`)
+- Checks Node.js, pnpm, and Docker concurrently against the minimum versions in `src/config/constants.ts`, and prints a compatibility report with each tool's minimum and installed version and its status (`ok`, `outdated`, or `missing`).
+- Node.js and pnpm are always required. Docker is optional by default: it's reported, but doesn't fail the check.
+- `--require <tools...>` makes optional tools required for that run (e.g. `--require docker` in a CI job that builds containers). `--skip <tools...>` leaves optional tools out. Both accept several names (`--require docker pnpm` or `--require docker,pnpm`). Unknown names, skipping Node.js or pnpm, or requiring and skipping the same tool are errors.
+- Exits with code `1` when a required tool is missing or outdated, or the options are invalid. Run with `--verbose` to see each detected version, or `--debug` to see why a tool was reported missing.
+
+```text
+$ dev-setup check --require docker
+[LOG] Dependency report:
+Tool    Required  Minimum  Installed  Status
+node    yes       v24.0.0  v24.1.0    ok
+pnpm    yes       12.0.0   12.6.0     ok
+docker  yes       24.0.0   -          missing
+
+[LOG] 1 required tool(s) missing or outdated: docker (missing)
+```
 
 ### Environment Variable Sync (`dev-setup env`)
 - Compares the variables defined in `.env` with those in `.env.example`. Only names are compared, and values are never printed.
@@ -59,13 +71,13 @@ dev-setup/
 ├── src/
 │   ├── commands/
 │   │   ├── init.command.ts       # dev-setup init
-│   │   ├── check.command.ts      # Placeholder
+│   │   ├── check.command.ts      # dev-setup check
 │   │   ├── env.command.ts        # dev-setup env
 │   │   ├── bootstrap.command.ts  # Placeholder
 │   │   └── registry.ts           # Generated list of commands (do not edit)
 │   │
 │   ├── services/
-│   │   ├── dependency.service.ts
+│   │   ├── dependency.service.ts  # Checks tool versions and builds the compatibility report
 │   │   ├── env.service.ts         # Generates .env and compares it with .env.example
 │   │   ├── devcontainer.service.ts
 │   │   └── project-bootstrap.service.ts
@@ -79,7 +91,7 @@ dev-setup/
 │   ├── utils/
 │   │   ├── logger.ts
 │   │   ├── env-file.ts     # Parses variable names from .env files
-│   │   ├── exec.ts         # Placeholder for shell-execution helpers
+│   │   ├── exec.ts         # Runs version commands (getToolVersion)
 │   │   ├── validation.ts
 │   │   └── errors.ts
 │   │
@@ -92,6 +104,7 @@ dev-setup/
 │
 ├── tests/                  # Mirrors src/ — one *.test.ts per source file
 │   ├── commands/
+│   │   ├── check.command.test.ts
 │   │   ├── env.command.test.ts
 │   │   ├── init.command.test.ts
 │   │   └── registry.test.ts
@@ -99,6 +112,7 @@ dev-setup/
 │   │   ├── dependency.service.test.ts
 │   │   └── env.service.test.ts
 │   ├── adapters/
+│   │   ├── docker.adapter.test.ts
 │   │   ├── file-system.adapter.test.ts
 │   │   └── node-toolchain.adapter.test.ts
 │   ├── scripts/
@@ -106,6 +120,7 @@ dev-setup/
 │   ├── utils/
 │   │   ├── env-file.test.ts
 │   │   ├── errors.test.ts
+│   │   ├── exec.test.ts
 │   │   ├── logger.test.ts
 │   │   └── validation.test.ts
 │   ├── cli.test.ts
@@ -173,13 +188,13 @@ The generator enforces these rules:
 `src/cli.ts` doesn't change.
 
 ### Services
-Core business logic for onboarding, dependency checking, environment syncing, and bootstrapping. `DependencyService.checkDependencies` checks tool versions, `EnvService.generateEnvFile` creates `.env` from `.env.example`, and `EnvService.compareEnvFiles` reports the variables `.env` is missing or doesn't need. They log their results to the `Logger` they're given, and commands decide the exit code (for example, `env` sets `process.exitCode` to `1` when variables are missing).
+Core business logic for onboarding, dependency checking, environment syncing, and bootstrapping. `DependencyService.checkDependencies` checks tool versions for `init`, `DependencyService.getCompatibilityReport` checks every tool concurrently and returns one row per tool for `check` (marking each required or optional), `EnvService.generateEnvFile` creates `.env` from `.env.example`, and `EnvService.compareEnvFiles` reports the variables `.env` is missing or doesn't need. They log their results to the `Logger` they're given, and commands decide the exit code (for example, `env` sets `process.exitCode` to `1` when variables are missing).
 
 ### Adapters
-Isolated interfaces for external systems (Docker, Node, filesystem, secrets managers). Adapters wrap failures from the underlying system in the typed errors from `src/utils/errors.ts`. For example, `FileSystemAdapter` throws `FileSystemError`, and `FileSystemAdapter.copyFileIfAbsent` copies with `COPYFILE_EXCL`, so the existence check and the copy happen in one step and an existing file is never overwritten.
+Isolated interfaces for external systems (Docker, Node, filesystem, secrets managers). Adapters wrap failures from the underlying system in the typed errors from `src/utils/errors.ts`. `NodeToolchainAdapter` and `DockerAdapter` get tool versions through `getToolVersion` in `src/utils/exec.ts`, which throws `MissingDependencyError` when a tool can't be run. `FileSystemAdapter` throws `FileSystemError`, and `FileSystemAdapter.copyFileIfAbsent` copies with `COPYFILE_EXCL`, so the existence check and the copy happen in one step and an existing file is never overwritten.
 
 ### Utils
-Shared helpers for logging, executing shell commands, validation, `.env` parsing (`EnvFile.parseEnvKeys`), and error handling.
+Shared helpers for logging, running version commands (`getToolVersion`), version parsing and comparison (`extractVersion`, `compareVersions`), `.env` parsing (`EnvFile.parseEnvKeys`), and error handling.
 
 ### Config
 Centralized constants, defaults, and templates.
