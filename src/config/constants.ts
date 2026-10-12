@@ -16,3 +16,7 @@ export const ENV_FILE = ".env";
 export const ENV_EXAMPLE_FILE = ".env.example";
 /** Name of the manifest whose dependencies `dev-setup init` installs. */
 export const PACKAGE_MANIFEST_FILE = "package.json";
+/** Devcontainer configuration files `dev-setup init` looks for, in order of precedence. */
+export const DEVCONTAINER_CONFIG_FILES: readonly string[] = [".devcontainer/devcontainer.json", ".devcontainer.json"];
+/** Docker Compose files `dev-setup init` looks for, in the order Docker Compose prefers them. */
+export const COMPOSE_FILES: readonly string[] = ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"];

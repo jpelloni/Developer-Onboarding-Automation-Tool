@@ -1,6 +1,6 @@
 {
   "title": "Developer Onboarding Automation CLI",
-  "description": "Built a modular TypeScript CLI (dev-setup) to standardize developer onboarding with a single init command that composes the other checks and installs project dependencies with pnpm, reporting whether Node.js, pnpm, and Docker meet minimum versions (with per-tool --require/--skip flags for CI), generating .env files from .env.example without overwriting existing ones, reporting missing or unused environment variables with a CI-friendly exit code, and scaffolding new TypeScript projects from an editable template embedded into the binary at build time. Designed a layered commands → services → adapters architecture that keeps external systems isolated, plus a build-time code generator that registers commands through static imports so they bundle cleanly into standalone Windows, macOS, and Linux binaries with Deno. Enforced quality through a GitHub Actions PR policy requiring passing tests, at least 80% coverage on changed files, JSDoc on every changed export, and up-to-date documentation. In progress: starting the dev environment or devcontainer and running initial project checks from dev-setup init.",
+  "description": "Built a modular TypeScript CLI (dev-setup) to standardize developer onboarding with a single init command that composes the other checks, installs project dependencies with pnpm, and starts the project's devcontainer or Docker Compose services, reporting whether Node.js, pnpm, and Docker meet minimum versions (with per-tool --require/--skip flags for CI), generating .env files from .env.example without overwriting existing ones, reporting missing or unused environment variables with a CI-friendly exit code, and scaffolding new TypeScript projects from an editable template embedded into the binary at build time. Designed a layered commands → services → adapters architecture that keeps external systems isolated, plus a build-time code generator that registers commands through static imports so they bundle cleanly into standalone Windows, macOS, and Linux binaries with Deno. Enforced quality through a GitHub Actions PR policy requiring passing tests, at least 80% coverage on changed files, JSDoc on every changed export, and up-to-date documentation. In progress: running initial project checks and tests from dev-setup init.",
   "technologies": [
     "TypeScript",
     "Node.js",
@@ -8,7 +8,8 @@
     "Deno",
     "Jest",
     "GitHub Actions",
-    "Docker"
+    "Docker",
+    "Dev Containers"
   ],
   "demoUrl": null,
   "githubUrl": "https://github.com/jpelloni/Developer-Onboarding-Automation-Tool"
