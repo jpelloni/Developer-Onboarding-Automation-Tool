@@ -12,11 +12,12 @@ Sections marked **(planned)** describe features that aren't implemented yet.
 The one command to run in a freshly cloned project. In order, it:
 
 1. Prints the same tool compatibility report as [`dev-setup check`](#dependency-checker-dev-setup-check). `--require` and `--skip` work the same way.
-2. Creates `.env` by copying `.env.example` in the current directory. An existing `.env` is never overwritten, and the step is skipped when there's no `.env.example`. Run with `--verbose` to see why it was skipped.
-3. If `.env` already existed, compares it with `.env.example` like [`dev-setup env`](#environment-variable-sync-dev-setup-env) and lists missing or unused variables.
-4. Ends with `Setup complete.`, or a list of the problems found.
+2. Installs the project's dependencies by running `pnpm install` in the current directory, with its output shown as it runs. The step is skipped when there's no `package.json`, pnpm is missing or outdated, or the tool check failed. Pass `--no-install` to skip it. Run with `--verbose` to see why it was skipped.
+3. Creates `.env` by copying `.env.example` in the current directory. An existing `.env` is never overwritten, and the step is skipped when there's no `.env.example`. Run with `--verbose` to see why it was skipped.
+4. If `.env` already existed, compares it with `.env.example` like [`dev-setup env`](#environment-variable-sync-dev-setup-env) and lists missing or unused variables.
+5. Ends with `Setup complete.`, or a list of the problems found.
 
-Each step runs even if an earlier one fails. `init` exits with code `1` when a required tool is missing or outdated, `.env` is missing variables, or a step fails.
+Each step runs even if an earlier one fails. `init` exits with code `1` when a required tool is missing or outdated, `pnpm install` fails, `.env` is missing variables, or a step fails.
 
 ```text
 $ dev-setup init
@@ -26,6 +27,12 @@ node    yes       v24.0.0  v24.20.0   ok
 pnpm    yes       12.0.0   12.6.0     ok
 docker  no        24.0.0   29.8.2     ok
 
+[LOG] Installing dependencies with pnpm install...
+
+Already up to date
+Done in 53ms using pnpm v12.6.0
+[LOG] Dependencies installed.
+
 [LOG] .env is missing 1 variable(s) defined in .env.example: API_KEY
 
 [LOG] Setup finished with 1 problem(s):
@@ -33,7 +40,6 @@ docker  no        24.0.0   29.8.2     ok
 ```
 
 **Planned:**
-- Install missing dependencies  
 - Start the development environment or devcontainer  
 - Run initial project checks/tests  
 
@@ -107,7 +113,7 @@ dev-setup/
 │   │   └── registry.ts           # Generated list of commands (do not edit)
 │   │
 │   ├── services/
-│   │   ├── dependency.service.ts  # Checks tool versions and builds the compatibility report
+│   │   ├── dependency.service.ts  # Checks tool versions, builds the compatibility report, and installs project dependencies
 │   │   ├── env.service.ts         # Generates .env and compares it with .env.example
 │   │   ├── devcontainer.service.ts
 │   │   └── project-bootstrap.service.ts  # Creates projects from the template
@@ -121,7 +127,7 @@ dev-setup/
 │   ├── utils/
 │   │   ├── logger.ts
 │   │   ├── env-file.ts     # Parses variable names from .env files
-│   │   ├── exec.ts         # Runs version commands (getToolVersion)
+│   │   ├── exec.ts         # Runs shell commands (getToolVersion, runCommand)
 │   │   ├── validation.ts
 │   │   └── errors.ts
 │   │
@@ -229,13 +235,13 @@ The generator enforces these rules:
 `src/cli.ts` doesn't change.
 
 ### Services
-Core business logic for onboarding, dependency checking, environment syncing, and bootstrapping. `DependencyService.getCompatibilityReport` checks every tool concurrently and returns one row per tool, marking each required or optional, and `summarizeRequiredFailures` turns the failed required tools into one line for `check` and `init`. `EnvService.generateEnvFile` creates `.env` from `.env.example`, and `EnvService.compareEnvFiles` reports the variables `.env` is missing or doesn't need, and `ProjectBootstrapService.bootstrapProject` creates a project from the template. They log their results to the `Logger` they're given, and commands decide the exit code (for example, `env` sets `process.exitCode` to `1` when variables are missing). `init` composes these services rather than adding its own logic.
+Core business logic for onboarding, dependency checking, environment syncing, and bootstrapping. `DependencyService.getCompatibilityReport` checks every tool concurrently and returns one row per tool, marking each required or optional, and `summarizeRequiredFailures` turns the failed required tools into one line for `check` and `init`. `DependencyService.installProjectDependencies` runs `pnpm install` when there's a `package.json` and the report shows pnpm as `ok`. `EnvService.generateEnvFile` creates `.env` from `.env.example`, and `EnvService.compareEnvFiles` reports the variables `.env` is missing or doesn't need, and `ProjectBootstrapService.bootstrapProject` creates a project from the template. They log their results to the `Logger` they're given, and commands decide the exit code (for example, `env` sets `process.exitCode` to `1` when variables are missing). `init` composes these services rather than adding its own logic.
 
 ### Adapters
-Isolated interfaces for external systems (Docker, Node, filesystem, secrets managers). Adapters wrap failures from the underlying system in the typed errors from `src/utils/errors.ts`. `NodeToolchainAdapter` and `DockerAdapter` get tool versions through `getToolVersion` in `src/utils/exec.ts`, which throws `MissingDependencyError` when a tool can't be run. `FileSystemAdapter` throws `FileSystemError`. `FileSystemAdapter.copyFileIfAbsent` copies with `COPYFILE_EXCL`, and `FileSystemAdapter.writeFileIfAbsent` writes with the `wx` flag, so the existence check and the write happen in one step and an existing file is never overwritten.
+Isolated interfaces for external systems (Docker, Node, filesystem, secrets managers). Adapters wrap failures from the underlying system in the typed errors from `src/utils/errors.ts`. `NodeToolchainAdapter` and `DockerAdapter` get tool versions through `getToolVersion` in `src/utils/exec.ts`, which throws `MissingDependencyError` when a tool can't be run. `NodeToolchainAdapter.installDependencies` runs `pnpm install` through `runCommand`, which runs a command in the shell with its output streamed to the terminal and throws `DependencyError` when the command can't start or exits with a non-zero code. `FileSystemAdapter` throws `FileSystemError`. `FileSystemAdapter.copyFileIfAbsent` copies with `COPYFILE_EXCL`, and `FileSystemAdapter.writeFileIfAbsent` writes with the `wx` flag, so the existence check and the write happen in one step and an existing file is never overwritten.
 
 ### Utils
-Shared helpers for logging, running version commands (`getToolVersion`), version parsing and comparison (`extractVersion`, `compareVersions`), `.env` parsing (`EnvFile.parseEnvKeys`), and error handling.
+Shared helpers for logging, running shell commands (`getToolVersion`, `runCommand`), version parsing and comparison (`extractVersion`, `compareVersions`), `.env` parsing (`EnvFile.parseEnvKeys`), and error handling.
 
 ### Config
 Centralized constants, defaults, and the generated project template.
