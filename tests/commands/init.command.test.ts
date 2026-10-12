@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import type { CompatibilityOptions, InstallResult, ToolReport } from '../../src/services/dependency.service.js';
+import type { DevEnvironmentResult } from '../../src/services/devcontainer.service.js';
 import type { EnvComparison, EnvFileResult } from '../../src/services/env.service.js';
 import { DependencyError, FileSystemError } from '../../src/utils/errors.js';
 import type { Logger } from '../../src/utils/logger.js';
@@ -12,6 +13,7 @@ const summarizeRequiredFailures = jest.fn<string | null, [ToolReport[]]>();
 const installProjectDependencies = jest.fn<Promise<InstallResult>, [ToolReport[], Logger]>();
 const generateEnvFile = jest.fn<Promise<EnvFileResult>, [Logger]>();
 const compareEnvFiles = jest.fn<Promise<EnvComparison>, [Logger]>();
+const startDevEnvironment = jest.fn<Promise<DevEnvironmentResult>, [ToolReport[], Logger]>();
 const loggerInstance = {
     info: jest.fn(),
     warn: jest.fn(),
@@ -28,6 +30,9 @@ jest.unstable_mockModule('../../src/services/dependency.service.js', () => ({
 }));
 jest.unstable_mockModule('../../src/services/env.service.js', () => ({
     EnvService: { generateEnvFile, compareEnvFiles },
+}));
+jest.unstable_mockModule('../../src/services/devcontainer.service.js', () => ({
+    DevcontainerService: { startDevEnvironment },
 }));
 jest.unstable_mockModule('../../src/utils/logger.js', () => ({ Logger: LoggerMock }));
 
@@ -55,6 +60,7 @@ beforeEach(() => {
     installProjectDependencies.mockResolvedValue('installed');
     generateEnvFile.mockResolvedValue('created');
     compareEnvFiles.mockResolvedValue({ missing: [], unused: [] });
+    startDevEnvironment.mockResolvedValue('compose-started');
 });
 
 afterAll(() => {
@@ -66,7 +72,7 @@ describe('createInitCommand', () => {
         const command = createInitCommand();
 
         expect(command.name()).toBe('init');
-        expect(command.description()).toBe('Run the developer onboarding setup: check tools, install dependencies, then create and check .env');
+        expect(command.description()).toBe('Run the developer onboarding setup: check tools, install dependencies, create and check .env, then start the dev environment');
     });
 
     it('creates a quiet logger when no flags are passed', async () => {
@@ -247,6 +253,62 @@ describe('createInitCommand', () => {
             await runInit();
 
             expect(loggerInstance.error).toHaveBeenCalledWith(error);
+            expect(process.exitCode).toBe(1);
+        });
+    });
+
+    describe('dev environment', () => {
+        it('starts the dev environment with the report and logger after .env setup', async () => {
+            await runInit();
+
+            expect(startDevEnvironment).toHaveBeenCalledWith(REPORT, loggerInstance);
+            expect(generateEnvFile.mock.invocationCallOrder[0])
+                .toBeLessThan(startDevEnvironment.mock.invocationCallOrder[0] as number);
+        });
+
+        it.each<DevEnvironmentResult>(['no-config', 'inside-container', 'docker-unavailable', 'cli-unavailable'])(
+            'does not report a problem when the result is %p', async (result) => {
+                startDevEnvironment.mockResolvedValue(result);
+
+                await runInit();
+
+                expect(lastLog()).toBe('Setup complete.');
+                expect(process.exitCode).toBeUndefined();
+            });
+
+        it('skips the dev environment with --no-start', async () => {
+            await runInit('init', '--no-start');
+
+            expect(startDevEnvironment).not.toHaveBeenCalled();
+            expect(loggerInstance.info).toHaveBeenCalledWith('Skipping the dev environment (--no-start).');
+        });
+
+        it('skips the dev environment when the tool check failed', async () => {
+            getCompatibilityReport.mockRejectedValue(new DependencyError('Unknown tool(s): dcoker.'));
+
+            await runInit();
+
+            expect(startDevEnvironment).not.toHaveBeenCalled();
+            expect(loggerInstance.info).toHaveBeenCalledWith(
+                'Skipping the dev environment because the tool check failed.');
+        });
+
+        it('starts the dev environment even when .env setup failed', async () => {
+            generateEnvFile.mockRejectedValue(new FileSystemError('Failed to copy ".env.example" to ".env".'));
+
+            await runInit();
+
+            expect(startDevEnvironment).toHaveBeenCalled();
+        });
+
+        it('logs a failed start and reports it', async () => {
+            const error = new DependencyError('"docker compose up -d" exited with code 1.');
+            startDevEnvironment.mockRejectedValue(error);
+
+            await runInit();
+
+            expect(loggerInstance.error).toHaveBeenCalledWith(error);
+            expect(lastLog()).toBe('Setup finished with 1 problem(s):\n  - Starting the dev environment failed.');
             expect(process.exitCode).toBe(1);
         });
     });

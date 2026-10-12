@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { DependencyService, type ToolReport } from '../services/dependency.service.js';
+import { DevcontainerService } from '../services/devcontainer.service.js';
 import { EnvService } from '../services/env.service.js';
 import { Logger } from '../utils/logger.js';
 
@@ -17,20 +18,24 @@ const toError = (ex: unknown): Error => (ex instanceof Error ? ex : new Error(St
  *    tool check failed.
  * 3. Creates `.env` from `.env.example` if `.env` doesn't exist yet.
  * 4. If `.env` already existed, compares it with `.env.example` as `dev-setup env` does.
- * 5. Prints a summary of the problems found, or that setup is complete.
+ * 5. Starts the development environment (the devcontainer, or Docker Compose services), unless
+ *    `--no-start` is passed. The start is skipped when the tool check failed; see
+ *    {@link DevcontainerService.startDevEnvironment} for when else nothing is started.
+ * 6. Prints a summary of the problems found, or that setup is complete.
  *
  * Each step runs even if an earlier one fails; errors are logged rather than thrown. It sets
  * `process.exitCode` to `1` when a required tool is missing or outdated, the install fails,
- * `.env` is missing variables, or a step fails.
+ * `.env` is missing variables, the dev environment fails to start, or a step fails.
  *
  * @returns The `init` command, which `src/cli.ts` adds to the program through the registry.
  */
 export default function createInitCommand(): Command {
     return new Command('init')
-        .description('Run the developer onboarding setup: check tools, install dependencies, then create and check .env')
+        .description('Run the developer onboarding setup: check tools, install dependencies, create and check .env, then start the dev environment')
         .option('--require <tools...>', 'treat optional tools as required (e.g. docker)')
         .option('--skip <tools...>', 'leave optional tools out of the check (e.g. docker)')
         .option('--no-install', "don't install the project's dependencies")
+        .option('--no-start', "don't start the devcontainer or Docker Compose services")
         .action(async (_options: unknown, command: Command) => {
             const options = command.optsWithGlobals();
             const logger = new Logger(options['verbose'], options['debug']);
@@ -69,6 +74,19 @@ export default function createInitCommand(): Command {
             } catch (ex) {
                 logger.error(toError(ex));
                 problems.push('Setting up .env failed.');
+            }
+
+            if (!options['start']) {
+                logger.info('Skipping the dev environment (--no-start).');
+            } else if (!report) {
+                logger.info('Skipping the dev environment because the tool check failed.');
+            } else {
+                try {
+                    await DevcontainerService.startDevEnvironment(report, logger);
+                } catch (ex) {
+                    logger.error(toError(ex));
+                    problems.push('Starting the dev environment failed.');
+                }
             }
 
             if (problems.length > 0) {
