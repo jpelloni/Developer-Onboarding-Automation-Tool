@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import { MissingDependencyError } from '../../src/utils/errors.js';
 
 const { jest } = import.meta;
@@ -8,7 +9,13 @@ const execMock = jest.fn((_cmd: string, callback: ExecCallback) => {
     callback(null, { stdout: '', stderr: '' });
 });
 
-jest.unstable_mockModule('node:child_process', () => ({ exec: execMock }));
+const spawnMock = jest.fn((_cmd: string, _options: object) => {
+    const child = new EventEmitter();
+    setImmediate(() => child.emit('close', 0, null));
+    return child;
+});
+
+jest.unstable_mockModule('node:child_process', () => ({ exec: execMock, spawn: spawnMock }));
 
 const { NodeToolchainAdapter } = await import('../../src/adapters/node-toolchain.adapter.js');
 
@@ -26,6 +33,7 @@ const failExec = (error: Error): void => {
 
 beforeEach(() => {
     execMock.mockClear();
+    spawnMock.mockClear();
 });
 
 describe('NodeToolchainAdapter', () => {
@@ -54,6 +62,14 @@ describe('NodeToolchainAdapter', () => {
 
             expect(execMock).toHaveBeenCalledWith('pnpm --version', expect.any(Function));
             expect(result).toBe('12.6.0');
+        });
+    });
+
+    describe('installDependencies', () => {
+        it('runs `pnpm install`', async () => {
+            await NodeToolchainAdapter.installDependencies();
+
+            expect(spawnMock).toHaveBeenCalledWith('pnpm install', { shell: true, stdio: 'inherit' });
         });
     });
 });

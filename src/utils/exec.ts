@@ -1,6 +1,6 @@
-import { exec } from 'node:child_process';
+import { exec, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
-import { MissingDependencyError } from './errors.js';
+import { DependencyError, MissingDependencyError } from './errors.js';
 import { extractVersion } from './validation.js';
 
 const execAsync = promisify(exec);
@@ -29,7 +29,33 @@ export const getToolVersion = async (label: string, command: string): Promise<st
     return extractVersion(stdout.toString());
 };
 
+/**
+ * Runs a shell command in the current directory, streaming its output to the terminal.
+ *
+ * The command runs through the shell so tools installed as scripts (such as `pnpm.cmd` on
+ * Windows) are found.
+ *
+ * @param command The command to run (e.g. `pnpm install`).
+ * @throws {DependencyError} When the command can't be started, or exits with a non-zero code or
+ * because of a signal.
+ */
+export const runCommand = (command: string): Promise<void> => new Promise((resolve, reject) => {
+    const child = spawn(command, { shell: true, stdio: 'inherit' });
+    child.on('error', (error) => {
+        reject(new DependencyError(`Failed to run "${command}".`, error));
+    });
+    child.on('close', (code, signal) => {
+        if (code === 0) {
+            resolve();
+            return;
+        }
+        const reason = signal ? `was stopped by ${signal}` : `exited with code ${code}`;
+        reject(new DependencyError(`"${command}" ${reason}.`));
+    });
+});
+
 /** Shell-execution helpers, grouped for namespaced imports. */
 export const Exec = {
     getToolVersion,
+    runCommand,
 };

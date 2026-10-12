@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import type { CompatibilityOptions, ToolReport } from '../../src/services/dependency.service.js';
+import type { CompatibilityOptions, InstallResult, ToolReport } from '../../src/services/dependency.service.js';
 import type { EnvComparison, EnvFileResult } from '../../src/services/env.service.js';
 import { DependencyError, FileSystemError } from '../../src/utils/errors.js';
 import type { Logger } from '../../src/utils/logger.js';
@@ -9,6 +9,7 @@ const { jest } = import.meta;
 const getCompatibilityReport = jest.fn<Promise<ToolReport[]>, [CompatibilityOptions, Logger]>();
 const formatCompatibilityReport = jest.fn<string, [ToolReport[]]>();
 const summarizeRequiredFailures = jest.fn<string | null, [ToolReport[]]>();
+const installProjectDependencies = jest.fn<Promise<InstallResult>, [ToolReport[], Logger]>();
 const generateEnvFile = jest.fn<Promise<EnvFileResult>, [Logger]>();
 const compareEnvFiles = jest.fn<Promise<EnvComparison>, [Logger]>();
 const loggerInstance = {
@@ -21,7 +22,9 @@ const loggerInstance = {
 const LoggerMock = jest.fn(() => loggerInstance);
 
 jest.unstable_mockModule('../../src/services/dependency.service.js', () => ({
-    DependencyService: { getCompatibilityReport, formatCompatibilityReport, summarizeRequiredFailures },
+    DependencyService: {
+        getCompatibilityReport, formatCompatibilityReport, summarizeRequiredFailures, installProjectDependencies,
+    },
 }));
 jest.unstable_mockModule('../../src/services/env.service.js', () => ({
     EnvService: { generateEnvFile, compareEnvFiles },
@@ -49,6 +52,7 @@ beforeEach(() => {
     getCompatibilityReport.mockResolvedValue(REPORT);
     formatCompatibilityReport.mockReturnValue('TABLE');
     summarizeRequiredFailures.mockReturnValue(null);
+    installProjectDependencies.mockResolvedValue('installed');
     generateEnvFile.mockResolvedValue('created');
     compareEnvFiles.mockResolvedValue({ missing: [], unused: [] });
 });
@@ -62,7 +66,7 @@ describe('createInitCommand', () => {
         const command = createInitCommand();
 
         expect(command.name()).toBe('init');
-        expect(command.description()).toBe('Run the developer onboarding setup: check tools, then create and check .env');
+        expect(command.description()).toBe('Run the developer onboarding setup: check tools, install dependencies, then create and check .env');
     });
 
     it('creates a quiet logger when no flags are passed', async () => {
@@ -125,6 +129,56 @@ describe('createInitCommand', () => {
             await runInit();
 
             expect(loggerInstance.error).toHaveBeenCalledWith(new Error('boom'));
+        });
+    });
+
+    describe('dependency installation', () => {
+        it('installs dependencies with the report and logger after the tool check and before .env setup', async () => {
+            await runInit();
+
+            expect(installProjectDependencies).toHaveBeenCalledWith(REPORT, loggerInstance);
+            const installOrder = installProjectDependencies.mock.invocationCallOrder[0] as number;
+            expect(getCompatibilityReport.mock.invocationCallOrder[0]).toBeLessThan(installOrder);
+            expect(installOrder).toBeLessThan(generateEnvFile.mock.invocationCallOrder[0] as number);
+        });
+
+        it.each<InstallResult>(['no-manifest', 'pnpm-unavailable'])('does not report a problem when the result is %p', async (result) => {
+            installProjectDependencies.mockResolvedValue(result);
+
+            await runInit();
+
+            expect(lastLog()).toBe('Setup complete.');
+            expect(process.exitCode).toBeUndefined();
+        });
+
+        it('skips the install with --no-install', async () => {
+            await runInit('init', '--no-install');
+
+            expect(installProjectDependencies).not.toHaveBeenCalled();
+            expect(loggerInstance.info).toHaveBeenCalledWith('Skipping dependency installation (--no-install).');
+            expect(generateEnvFile).toHaveBeenCalled();
+        });
+
+        it('skips the install when the tool check failed', async () => {
+            getCompatibilityReport.mockRejectedValue(new DependencyError('Unknown tool(s): dcoker.'));
+
+            await runInit();
+
+            expect(installProjectDependencies).not.toHaveBeenCalled();
+            expect(loggerInstance.info).toHaveBeenCalledWith(
+                'Skipping dependency installation because the tool check failed.');
+        });
+
+        it('logs a failed install, reports it, and still sets up .env', async () => {
+            const error = new DependencyError('"pnpm install" exited with code 1.');
+            installProjectDependencies.mockRejectedValue(error);
+
+            await runInit();
+
+            expect(loggerInstance.error).toHaveBeenCalledWith(error);
+            expect(generateEnvFile).toHaveBeenCalled();
+            expect(lastLog()).toBe('Setup finished with 1 problem(s):\n  - Installing dependencies failed.');
+            expect(process.exitCode).toBe(1);
         });
     });
 

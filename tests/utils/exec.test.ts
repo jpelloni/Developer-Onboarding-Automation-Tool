@@ -1,4 +1,5 @@
-import { MissingDependencyError } from '../../src/utils/errors.js';
+import { EventEmitter } from 'node:events';
+import { DependencyError, MissingDependencyError } from '../../src/utils/errors.js';
 
 const { jest } = import.meta;
 
@@ -8,9 +9,18 @@ const execMock = jest.fn((_cmd: string, callback: ExecCallback) => {
     callback(null, { stdout: '', stderr: '' });
 });
 
-jest.unstable_mockModule('node:child_process', () => ({ exec: execMock }));
+const spawnMock = jest.fn((_cmd: string, _options: object) => new EventEmitter());
 
-const { Exec, getToolVersion } = await import('../../src/utils/exec.js');
+jest.unstable_mockModule('node:child_process', () => ({ exec: execMock, spawn: spawnMock }));
+
+const { Exec, getToolVersion, runCommand } = await import('../../src/utils/exec.js');
+
+// Starts `runCommand` against a fake child process, then lets the test emit its events.
+const startCommand = (command = 'pnpm install') => {
+    const child = new EventEmitter();
+    spawnMock.mockReturnValueOnce(child);
+    return { child, result: runCommand(command) };
+};
 
 const stubExec = (stdout: string): void => {
     execMock.mockImplementation((_cmd: string, callback: ExecCallback) => {
@@ -20,6 +30,7 @@ const stubExec = (stdout: string): void => {
 
 beforeEach(() => {
     execMock.mockClear();
+    spawnMock.mockClear();
 });
 
 describe('getToolVersion', () => {
@@ -72,8 +83,48 @@ describe('getToolVersion', () => {
     });
 });
 
+describe('runCommand', () => {
+    it('runs the command through the shell with inherited output', async () => {
+        const { child, result } = startCommand();
+        child.emit('close', 0, null);
+
+        await expect(result).resolves.toBeUndefined();
+        expect(spawnMock).toHaveBeenCalledWith('pnpm install', { shell: true, stdio: 'inherit' });
+    });
+
+    it('throws a DependencyError with the exit code when the command fails', async () => {
+        const { child, result } = startCommand();
+        child.emit('close', 1, null);
+
+        const error = await result.catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(DependencyError);
+        expect((error as Error).message).toBe('"pnpm install" exited with code 1.');
+    });
+
+    it('throws a DependencyError naming the signal when the command is stopped', async () => {
+        const { child, result } = startCommand();
+        child.emit('close', null, 'SIGINT');
+
+        await expect(result).rejects.toThrow(new DependencyError('"pnpm install" was stopped by SIGINT.'));
+    });
+
+    it('throws a DependencyError, keeping the cause, when the command cannot be started', async () => {
+        const cause = new Error('spawn ENOENT');
+        const { child, result } = startCommand();
+        child.emit('error', cause);
+
+        const error = await result.catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(DependencyError);
+        expect((error as Error).message).toBe('Failed to run "pnpm install".');
+        expect((error as Error).cause).toBe(cause);
+    });
+});
+
 describe('Exec', () => {
-    it('exposes getToolVersion', () => {
+    it('exposes getToolVersion and runCommand', () => {
         expect(Exec.getToolVersion).toBe(getToolVersion);
+        expect(Exec.runCommand).toBe(runCommand);
     });
 });

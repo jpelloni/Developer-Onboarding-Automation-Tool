@@ -14,3 +14,5 @@ export const ALWAYS_REQUIRED_TOOLS: readonly ToolName[] = ["node", "pnpm"];
 export const ENV_FILE = ".env";
 /** Name of the template `dev-setup init` copies to {@link ENV_FILE}. */
 export const ENV_EXAMPLE_FILE = ".env.example";
+/** Name of the manifest whose dependencies `dev-setup init` installs. */
+export const PACKAGE_MANIFEST_FILE = "package.json";

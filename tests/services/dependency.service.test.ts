@@ -1,6 +1,6 @@
 import { DOCKER_VERSION, NODE_VERSION, PNPM_VERSION } from '../../src/config/constants.js';
 import type { ToolReport } from '../../src/services/dependency.service.js';
-import { DependencyError, MissingDependencyError } from '../../src/utils/errors.js';
+import { DependencyError, FileSystemError, MissingDependencyError } from '../../src/utils/errors.js';
 import type { Logger } from '../../src/utils/logger.js';
 
 const { jest } = import.meta;
@@ -8,16 +8,23 @@ const { jest } = import.meta;
 const getNodeVersion = jest.fn<Promise<string>, []>();
 const getPnpmVersion = jest.fn<Promise<string>, []>();
 const getDockerVersion = jest.fn<Promise<string>, []>();
+const installDependencies = jest.fn<Promise<void>, []>();
+const exists = jest.fn<Promise<boolean>, [string]>();
 
 jest.unstable_mockModule('../../src/adapters/node-toolchain.adapter.js', () => ({
-    NodeToolchainAdapter: { getNodeVersion, getPnpmVersion },
+    NodeToolchainAdapter: { getNodeVersion, getPnpmVersion, installDependencies },
+}));
+jest.unstable_mockModule('../../src/adapters/file-system.adapter.js', () => ({
+    FileSystemAdapter: { exists },
 }));
 jest.unstable_mockModule('../../src/adapters/docker.adapter.js', () => ({
     DockerAdapter: { getDockerVersion },
 }));
 
 const {
-    DependencyService: { getCompatibilityReport, formatCompatibilityReport, summarizeRequiredFailures },
+    DependencyService: {
+        getCompatibilityReport, formatCompatibilityReport, summarizeRequiredFailures, installProjectDependencies,
+    },
 } = await import('../../src/services/dependency.service.js');
 
 const createLogger = () => ({
@@ -32,6 +39,8 @@ beforeEach(() => {
     getNodeVersion.mockReset().mockResolvedValue('v24.1.0');
     getPnpmVersion.mockReset().mockResolvedValue('12.6.0');
     getDockerVersion.mockReset().mockResolvedValue('27.3.1');
+    installDependencies.mockReset().mockResolvedValue();
+    exists.mockReset().mockResolvedValue(true);
 });
 
 describe('getCompatibilityReport', () => {
@@ -185,5 +194,70 @@ describe('summarizeRequiredFailures', () => {
         ]);
 
         expect(result).toBe('2 required tool(s) missing or outdated: node (outdated), docker (missing)');
+    });
+});
+
+describe('installProjectDependencies', () => {
+    const pnpmRow = (status: ToolReport['status']): ToolReport => ({
+        tool: 'pnpm', required: true, minimumVersion: PNPM_VERSION, installedVersion: status === 'missing' ? null : '12.6.0', status,
+    });
+    const install = (report: ToolReport[], logger = createLogger()) =>
+        installProjectDependencies(report, logger as unknown as Logger);
+
+    it('runs pnpm install when package.json exists and pnpm is ok, logging start and success', async () => {
+        const logger = createLogger();
+
+        const result = await install([pnpmRow('ok')], logger);
+
+        expect(result).toBe('installed');
+        expect(exists).toHaveBeenCalledWith('package.json');
+        expect(installDependencies).toHaveBeenCalledTimes(1);
+        expect(logger.log.mock.calls).toEqual([
+            ['Installing dependencies with pnpm install...'],
+            ['Dependencies installed.'],
+        ]);
+    });
+
+    it('skips the install when there is no package.json', async () => {
+        const logger = createLogger();
+        exists.mockResolvedValue(false);
+
+        const result = await install([pnpmRow('ok')], logger);
+
+        expect(result).toBe('no-manifest');
+        expect(installDependencies).not.toHaveBeenCalled();
+        expect(logger.info).toHaveBeenCalledWith('No package.json found; skipping dependency installation.');
+    });
+
+    it.each<ToolReport['status']>(['missing', 'outdated'])('skips the install when pnpm is %s', async (status) => {
+        const logger = createLogger();
+
+        const result = await install([pnpmRow(status)], logger);
+
+        expect(result).toBe('pnpm-unavailable');
+        expect(installDependencies).not.toHaveBeenCalled();
+        expect(logger.info).toHaveBeenCalledWith('pnpm is missing or outdated; skipping dependency installation.');
+    });
+
+    it('skips the install when the report has no pnpm row', async () => {
+        const result = await install([]);
+
+        expect(result).toBe('pnpm-unavailable');
+        expect(installDependencies).not.toHaveBeenCalled();
+    });
+
+    it('propagates a failed install without logging success', async () => {
+        const logger = createLogger();
+        installDependencies.mockRejectedValue(new DependencyError('"pnpm install" exited with code 1.'));
+
+        await expect(install([pnpmRow('ok')], logger)).rejects.toThrow(DependencyError);
+        expect(logger.log).not.toHaveBeenCalledWith('Dependencies installed.');
+    });
+
+    it('propagates a failure to check for package.json', async () => {
+        exists.mockRejectedValue(new FileSystemError('Failed to check whether "package.json" exists.'));
+
+        await expect(install([pnpmRow('ok')])).rejects.toThrow(FileSystemError);
+        expect(installDependencies).not.toHaveBeenCalled();
     });
 });

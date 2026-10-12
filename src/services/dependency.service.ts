@@ -1,10 +1,12 @@
 import { DockerAdapter } from '../adapters/docker.adapter.js';
+import { FileSystemAdapter } from '../adapters/file-system.adapter.js';
 import { NodeToolchainAdapter } from '../adapters/node-toolchain.adapter.js';
 import {
     ALWAYS_REQUIRED_TOOLS,
     CHECKABLE_TOOLS,
     DOCKER_VERSION,
     NODE_VERSION,
+    PACKAGE_MANIFEST_FILE,
     PNPM_VERSION,
     type ToolName,
 } from '../config/constants.js';
@@ -149,11 +151,54 @@ function summarizeRequiredFailures(report: ToolReport[]): string | null {
 }
 
 /**
- * Service that verifies the developer's required tools are installed and up to date,
- * delegating the version checks to `NodeToolchainAdapter` and `DockerAdapter`.
+ * Outcome of {@link DependencyService.installProjectDependencies}:
+ *
+ * - `installed`: `pnpm install` succeeded.
+ * - `no-manifest`: there is no `package.json` in the current directory, so there is nothing to install.
+ * - `pnpm-unavailable`: the report shows pnpm as missing or outdated, so the install wasn't attempted.
+ */
+export type InstallResult = 'installed' | 'no-manifest' | 'pnpm-unavailable';
+
+/**
+ * Installs the current directory's project dependencies with `pnpm install`.
+ *
+ * Skips the install when there is no `package.json`, or when `report` shows pnpm as missing or
+ * outdated (the report already lists that as a problem). Logs the start and success of the
+ * install so they always print, and the reason for a skip as `info` (verbose mode only).
+ *
+ * @param report The rows returned by {@link DependencyService.getCompatibilityReport}, used to
+ * check that pnpm is usable.
+ * @param logger Logger that receives the outcome.
+ * @returns What happened; see {@link InstallResult}.
+ * @throws {FileSystemError} When the presence of `package.json` can't be checked.
+ * @throws {DependencyError} When `pnpm install` can't be run or fails.
+ */
+async function installProjectDependencies(report: ToolReport[], logger: Logger): Promise<InstallResult> {
+    if (!await FileSystemAdapter.exists(PACKAGE_MANIFEST_FILE)) {
+        logger.info(`No ${PACKAGE_MANIFEST_FILE} found; skipping dependency installation.`);
+        return 'no-manifest';
+    }
+
+    const pnpm = report.find((entry) => entry.tool === 'pnpm');
+    if (pnpm?.status !== 'ok') {
+        logger.info('pnpm is missing or outdated; skipping dependency installation.');
+        return 'pnpm-unavailable';
+    }
+
+    logger.log('Installing dependencies with pnpm install...');
+    await NodeToolchainAdapter.installDependencies();
+    logger.log('Dependencies installed.');
+    return 'installed';
+}
+
+/**
+ * Service that verifies the developer's required tools are installed and up to date, and
+ * installs the project's dependencies. It delegates to `NodeToolchainAdapter`, `DockerAdapter`,
+ * and `FileSystemAdapter`.
  */
 export const DependencyService = {
     getCompatibilityReport,
     formatCompatibilityReport,
     summarizeRequiredFailures,
+    installProjectDependencies,
 };
