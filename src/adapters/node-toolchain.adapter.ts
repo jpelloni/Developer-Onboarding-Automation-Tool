@@ -25,7 +25,16 @@ const getPnpmVersion = (): Promise<string> => getToolVersion('pnpm', 'pnpm --ver
 const installDependencies = (): Promise<void> => runCommand('pnpm install');
 
 /**
- * Adapter for the Node.js toolchain: reports the installed Node.js and pnpm versions and installs
- * project dependencies with pnpm.
+ * Runs one of the current directory's `package.json` scripts by running `pnpm run <script>`,
+ * streaming its output to the terminal.
+ *
+ * @param script Name of the script to run (e.g. `test`).
+ * @throws {DependencyError} When `pnpm run` can't be run, or the script fails.
  */
-export const NodeToolchainAdapter = { getNodeVersion, getPnpmVersion, installDependencies };
+const runScript = (script: string): Promise<void> => runCommand(`pnpm run ${script}`);
+
+/**
+ * Adapter for the Node.js toolchain: reports the installed Node.js and pnpm versions, installs
+ * project dependencies, and runs `package.json` scripts with pnpm.
+ */
+export const NodeToolchainAdapter = { getNodeVersion, getPnpmVersion, installDependencies, runScript };

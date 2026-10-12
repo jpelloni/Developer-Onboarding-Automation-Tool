@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import type { CompatibilityOptions, InstallResult, ToolReport } from '../../src/services/dependency.service.js';
 import type { DevEnvironmentResult } from '../../src/services/devcontainer.service.js';
 import type { EnvComparison, EnvFileResult } from '../../src/services/env.service.js';
+import type { ProjectChecksResult } from '../../src/services/project-checks.service.js';
 import { DependencyError, FileSystemError } from '../../src/utils/errors.js';
 import type { Logger } from '../../src/utils/logger.js';
 
@@ -14,6 +15,7 @@ const installProjectDependencies = jest.fn<Promise<InstallResult>, [ToolReport[]
 const generateEnvFile = jest.fn<Promise<EnvFileResult>, [Logger]>();
 const compareEnvFiles = jest.fn<Promise<EnvComparison>, [Logger]>();
 const startDevEnvironment = jest.fn<Promise<DevEnvironmentResult>, [ToolReport[], Logger]>();
+const runProjectChecks = jest.fn<Promise<ProjectChecksResult>, [ToolReport[], Logger]>();
 const loggerInstance = {
     info: jest.fn(),
     warn: jest.fn(),
@@ -33,6 +35,9 @@ jest.unstable_mockModule('../../src/services/env.service.js', () => ({
 }));
 jest.unstable_mockModule('../../src/services/devcontainer.service.js', () => ({
     DevcontainerService: { startDevEnvironment },
+}));
+jest.unstable_mockModule('../../src/services/project-checks.service.js', () => ({
+    ProjectChecksService: { runProjectChecks },
 }));
 jest.unstable_mockModule('../../src/utils/logger.js', () => ({ Logger: LoggerMock }));
 
@@ -61,6 +66,7 @@ beforeEach(() => {
     generateEnvFile.mockResolvedValue('created');
     compareEnvFiles.mockResolvedValue({ missing: [], unused: [] });
     startDevEnvironment.mockResolvedValue('compose-started');
+    runProjectChecks.mockResolvedValue({ status: 'ran', passed: ['lint', 'test'], failed: [] });
 });
 
 afterAll(() => {
@@ -72,7 +78,7 @@ describe('createInitCommand', () => {
         const command = createInitCommand();
 
         expect(command.name()).toBe('init');
-        expect(command.description()).toBe('Run the developer onboarding setup: check tools, install dependencies, create and check .env, then start the dev environment');
+        expect(command.description()).toBe('Run the developer onboarding setup: check tools, install dependencies, create and check .env, start the dev environment, then run the project checks');
     });
 
     it('creates a quiet logger when no flags are passed', async () => {
@@ -309,6 +315,83 @@ describe('createInitCommand', () => {
 
             expect(loggerInstance.error).toHaveBeenCalledWith(error);
             expect(lastLog()).toBe('Setup finished with 1 problem(s):\n  - Starting the dev environment failed.');
+            expect(process.exitCode).toBe(1);
+        });
+    });
+
+    describe('project checks', () => {
+        it('runs the project checks with the report and logger after starting the dev environment', async () => {
+            await runInit();
+
+            expect(runProjectChecks).toHaveBeenCalledWith(REPORT, loggerInstance);
+            expect(startDevEnvironment.mock.invocationCallOrder[0])
+                .toBeLessThan(runProjectChecks.mock.invocationCallOrder[0] as number);
+        });
+
+        it.each<ProjectChecksResult>([
+            { status: 'no-manifest' },
+            { status: 'no-scripts' },
+            { status: 'pnpm-unavailable' },
+            { status: 'ran', passed: ['test'], failed: [] },
+        ])('does not report a problem when the result is %p', async (result) => {
+            runProjectChecks.mockResolvedValue(result);
+
+            await runInit();
+
+            expect(lastLog()).toBe('Setup complete.');
+            expect(process.exitCode).toBeUndefined();
+        });
+
+        it('reports failed scripts as a problem and sets the exit code to 1', async () => {
+            runProjectChecks.mockResolvedValue({ status: 'ran', passed: [], failed: ['lint', 'test'] });
+
+            await runInit();
+
+            expect(lastLog()).toBe('Setup finished with 1 problem(s):\n  - Project checks failed: lint, test.');
+            expect(process.exitCode).toBe(1);
+        });
+
+        it('skips the project checks with --no-checks', async () => {
+            await runInit('init', '--no-checks');
+
+            expect(runProjectChecks).not.toHaveBeenCalled();
+            expect(loggerInstance.info).toHaveBeenCalledWith('Skipping the project checks (--no-checks).');
+        });
+
+        it('skips the project checks when the tool check failed', async () => {
+            getCompatibilityReport.mockRejectedValue(new DependencyError('Unknown tool(s): dcoker.'));
+
+            await runInit();
+
+            expect(runProjectChecks).not.toHaveBeenCalled();
+            expect(loggerInstance.info).toHaveBeenCalledWith(
+                'Skipping the project checks because the tool check failed.');
+        });
+
+        it('skips the project checks when installing dependencies failed', async () => {
+            installProjectDependencies.mockRejectedValue(new DependencyError('"pnpm install" exited with code 1.'));
+
+            await runInit();
+
+            expect(runProjectChecks).not.toHaveBeenCalled();
+            expect(loggerInstance.info).toHaveBeenCalledWith(
+                'Skipping the project checks because installing dependencies failed.');
+        });
+
+        it('runs the project checks with --no-install', async () => {
+            await runInit('init', '--no-install');
+
+            expect(runProjectChecks).toHaveBeenCalled();
+        });
+
+        it('logs errors from the checks and reports them', async () => {
+            const error = new DependencyError('Failed to parse package.json.');
+            runProjectChecks.mockRejectedValue(error);
+
+            await runInit();
+
+            expect(loggerInstance.error).toHaveBeenCalledWith(error);
+            expect(lastLog()).toBe('Setup finished with 1 problem(s):\n  - Running the project checks failed.');
             expect(process.exitCode).toBe(1);
         });
     });

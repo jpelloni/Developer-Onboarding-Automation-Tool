@@ -21,9 +21,10 @@ The one command to run in a freshly cloned project. In order, it:
    - Running inside a container is detected from `REMOTE_CONTAINERS` (VS Code Dev Containers), `CODESPACES`, or `/.dockerenv`.
    - The step is skipped when neither configuration exists, Docker was skipped with `--skip docker`, or the tool check failed. Pass `--no-start` to skip it. Run with `--verbose` to see why it was skipped.
    - If Docker is missing or outdated, or the devcontainer needs the [Dev Container CLI](https://github.com/devcontainers/cli) and it isn't installed, `init` prints a warning with a hint and doesn't start anything. That isn't counted as a problem, because Docker is optional. Pass `--require docker` to make a missing Docker fail `init`.
-6. Ends with `Setup complete.`, or a list of the problems found.
+6. Runs the project's initial checks: the `lint` and `test` scripts in `package.json`, in that order, with `pnpm run <script>` and its output shown as it runs. Scripts the project doesn't define are skipped, and a failing script doesn't stop the next one. The step is skipped when there's no `package.json`, it defines neither script, pnpm is missing or outdated, or the tool check or install failed. Pass `--no-checks` to skip it. Run with `--verbose` to see why it was skipped.
+7. Ends with `Setup complete.`, or a list of the problems found.
 
-Each step runs even if an earlier one fails. `init` exits with code `1` when a required tool is missing or outdated, `pnpm install` fails, `.env` is missing variables, the dev environment fails to start, or a step fails.
+Each step runs even if an earlier one fails. `init` exits with code `1` when a required tool is missing or outdated, `pnpm install` fails, `.env` is missing variables, the dev environment fails to start, a project check fails, or a step fails.
 
 ```text
 $ dev-setup init
@@ -45,12 +46,16 @@ Done in 53ms using pnpm v12.6.0
  ✔ Container my-service-db-1  Started
 [LOG] Docker Compose services started.
 
+[LOG] Running pnpm run lint...
+[LOG] pnpm run lint passed.
+
+[LOG] Running pnpm run test...
+Tests:       12 passed, 12 total
+[LOG] pnpm run test passed.
+
 [LOG] Setup finished with 1 problem(s):
   - .env is missing 1 variable(s).
 ```
-
-**Planned:**
-- Run initial project checks/tests  
 
 ### Dependency Checker (`dev-setup check`)
 - Checks Node.js, pnpm, and Docker concurrently against the minimum versions in `src/config/constants.ts`, and prints a compatibility report with each tool's minimum and installed version and its status (`ok`, `outdated`, or `missing`).
@@ -124,6 +129,7 @@ dev-setup/
 │   ├── services/
 │   │   ├── dependency.service.ts  # Checks tool versions, builds the compatibility report, and installs project dependencies
 │   │   ├── env.service.ts         # Generates .env and compares it with .env.example
+│   │   ├── project-checks.service.ts  # Runs the project's lint and test scripts
 │   │   ├── devcontainer.service.ts    # Starts the devcontainer or Docker Compose services
 │   │   └── project-bootstrap.service.ts  # Creates projects from the template
 │   │
@@ -160,6 +166,7 @@ dev-setup/
 │   │   ├── dependency.service.test.ts
 │   │   ├── devcontainer.service.test.ts
 │   │   ├── env.service.test.ts
+│   │   ├── project-checks.service.test.ts
 │   │   └── project-bootstrap.service.test.ts
 │   ├── adapters/
 │   │   ├── devcontainer.adapter.test.ts
@@ -247,10 +254,10 @@ The generator enforces these rules:
 `src/cli.ts` doesn't change.
 
 ### Services
-Core business logic for onboarding, dependency checking, environment syncing, and bootstrapping. `DependencyService.getCompatibilityReport` checks every tool concurrently and returns one row per tool, marking each required or optional, and `summarizeRequiredFailures` turns the failed required tools into one line for `check` and `init`. `DependencyService.installProjectDependencies` runs `pnpm install` when there's a `package.json` and the report shows pnpm as `ok`. `EnvService.generateEnvFile` creates `.env` from `.env.example`, and `EnvService.compareEnvFiles` reports the variables `.env` is missing or doesn't need, `DevcontainerService.startDevEnvironment` starts the devcontainer (outside a container) or the Docker Compose services when the report shows Docker as `ok`, and `ProjectBootstrapService.bootstrapProject` creates a project from the template. They log their results to the `Logger` they're given, and commands decide the exit code (for example, `env` sets `process.exitCode` to `1` when variables are missing). `init` composes these services rather than adding its own logic.
+Core business logic for onboarding, dependency checking, environment syncing, and bootstrapping. `DependencyService.getCompatibilityReport` checks every tool concurrently and returns one row per tool, marking each required or optional, and `summarizeRequiredFailures` turns the failed required tools into one line for `check` and `init`. `DependencyService.installProjectDependencies` runs `pnpm install` when there's a `package.json` and the report shows pnpm as `ok`. `EnvService.generateEnvFile` creates `.env` from `.env.example`, and `EnvService.compareEnvFiles` reports the variables `.env` is missing or doesn't need, `DevcontainerService.startDevEnvironment` starts the devcontainer (outside a container) or the Docker Compose services when the report shows Docker as `ok`, `ProjectChecksService.runProjectChecks` runs the project's `lint` and `test` scripts (`PROJECT_CHECK_SCRIPTS`) and returns which passed and failed, and `ProjectBootstrapService.bootstrapProject` creates a project from the template. They log their results to the `Logger` they're given, and commands decide the exit code (for example, `env` sets `process.exitCode` to `1` when variables are missing). `init` composes these services rather than adding its own logic.
 
 ### Adapters
-Isolated interfaces for external systems (Docker, Node, filesystem, secrets managers). Adapters wrap failures from the underlying system in the typed errors from `src/utils/errors.ts`. `NodeToolchainAdapter` and `DockerAdapter` get tool versions through `getToolVersion` in `src/utils/exec.ts`, which throws `MissingDependencyError` when a tool can't be run. `NodeToolchainAdapter.installDependencies` runs `pnpm install` through `runCommand`, which runs a command in the shell with its output streamed to the terminal and throws `DependencyError` when the command can't start or exits with a non-zero code. `DockerAdapter.composeUp` (`docker compose up -d`) and `DevcontainerAdapter.up` (`devcontainer up --workspace-folder .`) also use `runCommand`. `DevcontainerAdapter.isInsideContainer` checks `REMOTE_CONTAINERS`, `CODESPACES`, and `/.dockerenv`. `FileSystemAdapter` throws `FileSystemError`. `FileSystemAdapter.copyFileIfAbsent` copies with `COPYFILE_EXCL`, and `FileSystemAdapter.writeFileIfAbsent` writes with the `wx` flag, so the existence check and the write happen in one step and an existing file is never overwritten.
+Isolated interfaces for external systems (Docker, Node, filesystem, secrets managers). Adapters wrap failures from the underlying system in the typed errors from `src/utils/errors.ts`. `NodeToolchainAdapter` and `DockerAdapter` get tool versions through `getToolVersion` in `src/utils/exec.ts`, which throws `MissingDependencyError` when a tool can't be run. `NodeToolchainAdapter.installDependencies` runs `pnpm install`, and `NodeToolchainAdapter.runScript` runs `pnpm run <script>`, through `runCommand`, which runs a command in the shell with its output streamed to the terminal and throws `DependencyError` when the command can't start or exits with a non-zero code. `DockerAdapter.composeUp` (`docker compose up -d`) and `DevcontainerAdapter.up` (`devcontainer up --workspace-folder .`) also use `runCommand`. `DevcontainerAdapter.isInsideContainer` checks `REMOTE_CONTAINERS`, `CODESPACES`, and `/.dockerenv`. `FileSystemAdapter` throws `FileSystemError`. `FileSystemAdapter.copyFileIfAbsent` copies with `COPYFILE_EXCL`, and `FileSystemAdapter.writeFileIfAbsent` writes with the `wx` flag, so the existence check and the write happen in one step and an existing file is never overwritten.
 
 ### Utils
 Shared helpers for logging, running shell commands (`getToolVersion`, `runCommand`), version parsing and comparison (`extractVersion`, `compareVersions`), `.env` parsing (`EnvFile.parseEnvKeys`), and error handling.
