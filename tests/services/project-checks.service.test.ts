@@ -7,12 +7,16 @@ const { jest } = import.meta;
 const exists = jest.fn<Promise<boolean>, [string]>();
 const readTextFile = jest.fn<Promise<string>, [string]>();
 const runScript = jest.fn<Promise<void>, [string]>();
+const devcontainerExec = jest.fn<Promise<void>, [string]>();
 
 jest.unstable_mockModule('../../src/adapters/file-system.adapter.js', () => ({
     FileSystemAdapter: { exists, readTextFile },
 }));
 jest.unstable_mockModule('../../src/adapters/node-toolchain.adapter.js', () => ({
     NodeToolchainAdapter: { runScript },
+}));
+jest.unstable_mockModule('../../src/adapters/devcontainer.adapter.js', () => ({
+    DevcontainerAdapter: { exec: devcontainerExec },
 }));
 
 const { ProjectChecksService: { runProjectChecks } } = await import('../../src/services/project-checks.service.js');
@@ -43,6 +47,7 @@ beforeEach(() => {
     readTextFile.mockReset();
     givenManifest({ scripts: { build: 'tsc', lint: 'eslint src', test: 'jest' } });
     runScript.mockReset().mockResolvedValue(undefined);
+    devcontainerExec.mockReset().mockResolvedValue(undefined);
 });
 
 describe('runProjectChecks', () => {
@@ -131,5 +136,27 @@ describe('runProjectChecks', () => {
         readTextFile.mockRejectedValue(new FileSystemError('Failed to read "package.json".'));
 
         await expect(runProjectChecks(REPORT, logger as unknown as Logger)).rejects.toThrow(FileSystemError);
+    });
+
+    describe('in the devcontainer', () => {
+        it('runs the scripts inside the container without needing pnpm in the report', async () => {
+            const result = await runProjectChecks([], logger as unknown as Logger, 'devcontainer');
+
+            expect(devcontainerExec.mock.calls).toEqual([['pnpm run lint'], ['pnpm run test']]);
+            expect(runScript).not.toHaveBeenCalled();
+            expect(result).toEqual({ status: 'ran', passed: ['lint', 'test'], failed: [] });
+            expect(logger.log).toHaveBeenCalledWith('Running pnpm run lint in the devcontainer...');
+            expect(logger.log).toHaveBeenCalledWith('pnpm run test passed.');
+        });
+
+        it('keeps running scripts after one fails in the container', async () => {
+            const error = new DependencyError('"devcontainer exec --workspace-folder . pnpm run lint" exited with code 1.');
+            devcontainerExec.mockRejectedValueOnce(error);
+
+            const result = await runProjectChecks([], logger as unknown as Logger, 'devcontainer');
+
+            expect(logger.error).toHaveBeenCalledWith(error);
+            expect(result).toEqual({ status: 'ran', passed: ['test'], failed: ['lint'] });
+        });
     });
 });

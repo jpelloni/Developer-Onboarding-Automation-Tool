@@ -18,6 +18,15 @@ const getCliVersion = (): Promise<string> => getToolVersion('the Dev Container C
 const up = (): Promise<void> => runCommand('devcontainer up --workspace-folder .');
 
 /**
+ * Runs a command inside the current directory's running devcontainer by running
+ * `devcontainer exec --workspace-folder . <command>`, streaming its output to the terminal.
+ *
+ * @param command The command to run in the container (e.g. `pnpm install`).
+ * @throws {DependencyError} When `devcontainer exec` can't be run, or the command fails.
+ */
+const exec = (command: string): Promise<void> => runCommand(`devcontainer exec --workspace-folder . ${command}`);
+
+/**
  * Checks whether `dev-setup` is running inside a container: a VS Code devcontainer
  * (`REMOTE_CONTAINERS`), a GitHub Codespace (`CODESPACES`), or any Docker container (`/.dockerenv`).
  *
@@ -29,7 +38,7 @@ const isInsideContainer = (): boolean =>
     || existsSync('/.dockerenv');
 
 /**
- * Adapter for devcontainers: reports the Dev Container CLI version, starts the devcontainer, and
- * detects whether `dev-setup` is already running inside a container.
+ * Adapter for devcontainers: reports the Dev Container CLI version, starts the devcontainer, runs
+ * commands inside it, and detects whether `dev-setup` is already running inside a container.
  */
-export const DevcontainerAdapter = { getCliVersion, up, isInsideContainer };
+export const DevcontainerAdapter = { getCliVersion, up, exec, isInsideContainer };

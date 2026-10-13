@@ -1,6 +1,7 @@
 import { Command } from 'commander';
-import type { CompatibilityOptions, InstallResult, ToolReport } from '../../src/services/dependency.service.js';
-import type { DevEnvironmentResult } from '../../src/services/devcontainer.service.js';
+import type { InitTarget } from '../../src/config/constants.js';
+import type { CompatibilityOptions, InstallResult, ToolProfile, ToolReport } from '../../src/services/dependency.service.js';
+import type { DevcontainerStartResult, DevEnvironmentResult } from '../../src/services/devcontainer.service.js';
 import type { EnvComparison, EnvFileResult } from '../../src/services/env.service.js';
 import type { ProjectChecksResult } from '../../src/services/project-checks.service.js';
 import { DependencyError, FileSystemError } from '../../src/utils/errors.js';
@@ -11,11 +12,14 @@ const { jest } = import.meta;
 const getCompatibilityReport = jest.fn<Promise<ToolReport[]>, [CompatibilityOptions, Logger]>();
 const formatCompatibilityReport = jest.fn<string, [ToolReport[]]>();
 const summarizeRequiredFailures = jest.fn<string | null, [ToolReport[]]>();
-const installProjectDependencies = jest.fn<Promise<InstallResult>, [ToolReport[], Logger]>();
+const installProjectDependencies = jest.fn<Promise<InstallResult>, [ToolReport[], Logger, InitTarget]>();
 const generateEnvFile = jest.fn<Promise<EnvFileResult>, [Logger]>();
 const compareEnvFiles = jest.fn<Promise<EnvComparison>, [Logger]>();
+const resolveInitTarget = jest.fn<Promise<InitTarget>, [InitTarget | undefined, Logger]>();
 const startDevEnvironment = jest.fn<Promise<DevEnvironmentResult>, [ToolReport[], Logger]>();
-const runProjectChecks = jest.fn<Promise<ProjectChecksResult>, [ToolReport[], Logger]>();
+const startDevcontainer = jest.fn<Promise<DevcontainerStartResult>, [ToolReport[], Logger]>();
+const runProjectChecks = jest.fn<Promise<ProjectChecksResult>, [ToolReport[], Logger, InitTarget]>();
+const DEVCONTAINER_PROFILE: ToolProfile = { tools: ['docker', 'devcontainer'], alwaysRequired: ['docker', 'devcontainer'] };
 const loggerInstance = {
     info: jest.fn(),
     warn: jest.fn(),
@@ -29,12 +33,13 @@ jest.unstable_mockModule('../../src/services/dependency.service.js', () => ({
     DependencyService: {
         getCompatibilityReport, formatCompatibilityReport, summarizeRequiredFailures, installProjectDependencies,
     },
+    DEVCONTAINER_PROFILE,
 }));
 jest.unstable_mockModule('../../src/services/env.service.js', () => ({
     EnvService: { generateEnvFile, compareEnvFiles },
 }));
 jest.unstable_mockModule('../../src/services/devcontainer.service.js', () => ({
-    DevcontainerService: { startDevEnvironment },
+    DevcontainerService: { resolveInitTarget, startDevEnvironment, startDevcontainer },
 }));
 jest.unstable_mockModule('../../src/services/project-checks.service.js', () => ({
     ProjectChecksService: { runProjectChecks },
@@ -59,6 +64,7 @@ const lastLog = (): unknown => loggerInstance.log.mock.calls.at(-1)?.[0];
 beforeEach(() => {
     jest.clearAllMocks();
     process.exitCode = undefined;
+    resolveInitTarget.mockResolvedValue('local');
     getCompatibilityReport.mockResolvedValue(REPORT);
     formatCompatibilityReport.mockReturnValue('TABLE');
     summarizeRequiredFailures.mockReturnValue(null);
@@ -66,6 +72,7 @@ beforeEach(() => {
     generateEnvFile.mockResolvedValue('created');
     compareEnvFiles.mockResolvedValue({ missing: [], unused: [] });
     startDevEnvironment.mockResolvedValue('compose-started');
+    startDevcontainer.mockResolvedValue('started');
     runProjectChecks.mockResolvedValue({ status: 'ran', passed: ['lint', 'test'], failed: [] });
 });
 
@@ -148,7 +155,7 @@ describe('createInitCommand', () => {
         it('installs dependencies with the report and logger after the tool check and before .env setup', async () => {
             await runInit();
 
-            expect(installProjectDependencies).toHaveBeenCalledWith(REPORT, loggerInstance);
+            expect(installProjectDependencies).toHaveBeenCalledWith(REPORT, loggerInstance, 'local');
             const installOrder = installProjectDependencies.mock.invocationCallOrder[0] as number;
             expect(getCompatibilityReport.mock.invocationCallOrder[0]).toBeLessThan(installOrder);
             expect(installOrder).toBeLessThan(generateEnvFile.mock.invocationCallOrder[0] as number);
@@ -323,7 +330,7 @@ describe('createInitCommand', () => {
         it('runs the project checks with the report and logger after starting the dev environment', async () => {
             await runInit();
 
-            expect(runProjectChecks).toHaveBeenCalledWith(REPORT, loggerInstance);
+            expect(runProjectChecks).toHaveBeenCalledWith(REPORT, loggerInstance, 'local');
             expect(startDevEnvironment.mock.invocationCallOrder[0])
                 .toBeLessThan(runProjectChecks.mock.invocationCallOrder[0] as number);
         });
@@ -393,6 +400,180 @@ describe('createInitCommand', () => {
             expect(loggerInstance.error).toHaveBeenCalledWith(error);
             expect(lastLog()).toBe('Setup finished with 1 problem(s):\n  - Running the project checks failed.');
             expect(process.exitCode).toBe(1);
+        });
+    });
+
+    describe('target', () => {
+        it('resolves the target from --target', async () => {
+            await runInit('init', '--target', 'devcontainer');
+
+            expect(resolveInitTarget).toHaveBeenCalledWith('devcontainer', loggerInstance);
+        });
+
+        it('lets the service decide when --target is not passed', async () => {
+            await runInit();
+
+            expect(resolveInitTarget).toHaveBeenCalledWith(undefined, loggerInstance);
+        });
+
+        it('rejects an unknown --target', async () => {
+            const command = createInitCommand().exitOverride().configureOutput({ writeErr: () => undefined });
+
+            await expect(command.parseAsync(['--target', 'cloud'], { from: 'user' })).rejects.toThrow(/cloud/);
+            expect(resolveInitTarget).not.toHaveBeenCalled();
+        });
+
+        it('sets up locally without the devcontainer steps when the target is local', async () => {
+            await runInit();
+
+            expect(startDevEnvironment).toHaveBeenCalled();
+            expect(startDevcontainer).not.toHaveBeenCalled();
+        });
+
+        it('logs a failed target choice, runs no steps, and reports it', async () => {
+            const error = new DependencyError('--target devcontainer needs a devcontainer configuration.');
+            resolveInitTarget.mockRejectedValue(error);
+
+            await runInit('init', '--target', 'devcontainer');
+
+            expect(loggerInstance.error).toHaveBeenCalledWith(error);
+            expect(getCompatibilityReport).not.toHaveBeenCalled();
+            expect(generateEnvFile).not.toHaveBeenCalled();
+            expect(lastLog()).toBe('Setup finished with 1 problem(s):\n  - Choosing where to set up the project failed.');
+            expect(process.exitCode).toBe(1);
+        });
+
+        it('wraps non-Error target failures in an Error before logging', async () => {
+            resolveInitTarget.mockRejectedValue('boom');
+
+            await runInit();
+
+            expect(loggerInstance.error).toHaveBeenCalledWith(new Error('boom'));
+        });
+    });
+
+    describe('devcontainer target', () => {
+        const DEVCONTAINER_REPORT: ToolReport[] = [
+            { tool: 'docker', required: true, minimumVersion: '24.0.0', installedVersion: '27.3.1', status: 'ok' },
+            { tool: 'devcontainer', required: true, minimumVersion: '0.60.0', installedVersion: '0.72.0', status: 'ok' },
+        ];
+
+        const order = (mock: { mock: { invocationCallOrder: number[] } }): number => mock.mock.invocationCallOrder[0] as number;
+
+        beforeEach(() => {
+            resolveInitTarget.mockResolvedValue('devcontainer');
+            getCompatibilityReport.mockResolvedValue(DEVCONTAINER_REPORT);
+        });
+
+        it('announces the target and checks the devcontainer tools instead of Node.js and pnpm', async () => {
+            await runInit('init', '--require', 'docker');
+
+            expect(loggerInstance.log).toHaveBeenCalledWith('Setting up the project in the devcontainer.');
+            expect(getCompatibilityReport).toHaveBeenCalledWith(
+                { require: ['docker'], skip: undefined, profile: DEVCONTAINER_PROFILE }, loggerInstance);
+            expect(loggerInstance.log).toHaveBeenCalledWith('Dependency report:\nTABLE');
+        });
+
+        it('sets up .env, starts the devcontainer, installs, then runs the checks inside it', async () => {
+            await runInit();
+
+            expect(startDevcontainer).toHaveBeenCalledWith(DEVCONTAINER_REPORT, loggerInstance);
+            expect(installProjectDependencies).toHaveBeenCalledWith(DEVCONTAINER_REPORT, loggerInstance, 'devcontainer');
+            expect(runProjectChecks).toHaveBeenCalledWith(DEVCONTAINER_REPORT, loggerInstance, 'devcontainer');
+            expect(startDevEnvironment).not.toHaveBeenCalled();
+            expect(order(getCompatibilityReport)).toBeLessThan(order(generateEnvFile));
+            expect(order(generateEnvFile)).toBeLessThan(order(startDevcontainer));
+            expect(order(startDevcontainer)).toBeLessThan(order(installProjectDependencies));
+            expect(order(installProjectDependencies)).toBeLessThan(order(runProjectChecks));
+            expect(lastLog()).toBe('Setup complete.');
+        });
+
+        it('reports failed required tools and skips the steps that need the container', async () => {
+            summarizeRequiredFailures.mockReturnValue('1 required tool(s) missing or outdated: devcontainer (missing)');
+            startDevcontainer.mockResolvedValue('tools-unavailable');
+
+            await runInit();
+
+            expect(generateEnvFile).toHaveBeenCalled();
+            expect(installProjectDependencies).not.toHaveBeenCalled();
+            expect(runProjectChecks).not.toHaveBeenCalled();
+            expect(loggerInstance.info).toHaveBeenCalledWith(
+                "Skipping dependency installation because the devcontainer wasn't started.");
+            expect(loggerInstance.info).toHaveBeenCalledWith(
+                "Skipping the project checks because the devcontainer wasn't started.");
+            expect(lastLog()).toBe(
+                'Setup finished with 1 problem(s):\n  - 1 required tool(s) missing or outdated: devcontainer (missing)');
+            expect(process.exitCode).toBe(1);
+        });
+
+        it('skips everything that needs the tools when the tool check failed, but still sets up .env', async () => {
+            getCompatibilityReport.mockRejectedValue(new DependencyError('Unknown tool(s): node. Expected one of: docker, devcontainer.'));
+
+            await runInit();
+
+            expect(generateEnvFile).toHaveBeenCalled();
+            expect(startDevcontainer).not.toHaveBeenCalled();
+            expect(installProjectDependencies).not.toHaveBeenCalled();
+            expect(runProjectChecks).not.toHaveBeenCalled();
+            expect(loggerInstance.info).toHaveBeenCalledWith('Skipping the devcontainer because the tool check failed.');
+            expect(lastLog()).toBe('Setup finished with 1 problem(s):\n  - The tool check failed.');
+        });
+
+        it('skips the devcontainer, install, and checks with --no-start', async () => {
+            await runInit('init', '--no-start');
+
+            expect(startDevcontainer).not.toHaveBeenCalled();
+            expect(installProjectDependencies).not.toHaveBeenCalled();
+            expect(runProjectChecks).not.toHaveBeenCalled();
+            expect(loggerInstance.info).toHaveBeenCalledWith('Skipping the devcontainer (--no-start).');
+            expect(lastLog()).toBe('Setup complete.');
+        });
+
+        it('logs a failed start, reports it, and skips the install and checks', async () => {
+            const error = new DependencyError('"devcontainer up --workspace-folder ." exited with code 1.');
+            startDevcontainer.mockRejectedValue(error);
+
+            await runInit();
+
+            expect(loggerInstance.error).toHaveBeenCalledWith(error);
+            expect(installProjectDependencies).not.toHaveBeenCalled();
+            expect(runProjectChecks).not.toHaveBeenCalled();
+            expect(lastLog()).toBe('Setup finished with 1 problem(s):\n  - Starting the devcontainer failed.');
+            expect(process.exitCode).toBe(1);
+        });
+
+        it('skips the install with --no-install but still runs the checks', async () => {
+            await runInit('init', '--no-install');
+
+            expect(installProjectDependencies).not.toHaveBeenCalled();
+            expect(loggerInstance.info).toHaveBeenCalledWith('Skipping dependency installation (--no-install).');
+            expect(runProjectChecks).toHaveBeenCalled();
+        });
+
+        it('skips the checks with --no-checks', async () => {
+            await runInit('init', '--no-checks');
+
+            expect(runProjectChecks).not.toHaveBeenCalled();
+            expect(loggerInstance.info).toHaveBeenCalledWith('Skipping the project checks (--no-checks).');
+        });
+
+        it('skips the checks when the install failed and reports the install', async () => {
+            installProjectDependencies.mockRejectedValue(new DependencyError('"devcontainer exec --workspace-folder . pnpm install" exited with code 1.'));
+
+            await runInit();
+
+            expect(runProjectChecks).not.toHaveBeenCalled();
+            expect(loggerInstance.info).toHaveBeenCalledWith(
+                'Skipping the project checks because installing dependencies failed.');
+            expect(lastLog()).toBe('Setup finished with 1 problem(s):\n  - Installing dependencies failed.');
+        });
+
+        it('reports failed checks', async () => {
+            runProjectChecks.mockResolvedValue({ status: 'ran', passed: ['lint'], failed: ['test'] });
+
+            await runInit();
+
+            expect(lastLog()).toBe('Setup finished with 1 problem(s):\n  - Project checks failed: test.');
         });
     });
 

@@ -1,4 +1,4 @@
-import { DOCKER_VERSION, NODE_VERSION, PNPM_VERSION } from '../../src/config/constants.js';
+import { DEVCONTAINER_CLI_VERSION, DOCKER_VERSION, NODE_VERSION, PNPM_VERSION } from '../../src/config/constants.js';
 import type { ToolReport } from '../../src/services/dependency.service.js';
 import { DependencyError, FileSystemError, MissingDependencyError } from '../../src/utils/errors.js';
 import type { Logger } from '../../src/utils/logger.js';
@@ -10,6 +10,8 @@ const getPnpmVersion = jest.fn<Promise<string>, []>();
 const getDockerVersion = jest.fn<Promise<string>, []>();
 const installDependencies = jest.fn<Promise<void>, []>();
 const exists = jest.fn<Promise<boolean>, [string]>();
+const getCliVersion = jest.fn<Promise<string>, []>();
+const devcontainerExec = jest.fn<Promise<void>, [string]>();
 
 jest.unstable_mockModule('../../src/adapters/node-toolchain.adapter.js', () => ({
     NodeToolchainAdapter: { getNodeVersion, getPnpmVersion, installDependencies },
@@ -20,11 +22,15 @@ jest.unstable_mockModule('../../src/adapters/file-system.adapter.js', () => ({
 jest.unstable_mockModule('../../src/adapters/docker.adapter.js', () => ({
     DockerAdapter: { getDockerVersion },
 }));
+jest.unstable_mockModule('../../src/adapters/devcontainer.adapter.js', () => ({
+    DevcontainerAdapter: { getCliVersion, exec: devcontainerExec },
+}));
 
 const {
     DependencyService: {
         getCompatibilityReport, formatCompatibilityReport, summarizeRequiredFailures, installProjectDependencies,
     },
+    DEVCONTAINER_PROFILE,
 } = await import('../../src/services/dependency.service.js');
 
 const createLogger = () => ({
@@ -41,6 +47,8 @@ beforeEach(() => {
     getDockerVersion.mockReset().mockResolvedValue('27.3.1');
     installDependencies.mockReset().mockResolvedValue();
     exists.mockReset().mockResolvedValue(true);
+    getCliVersion.mockReset().mockResolvedValue('0.72.0');
+    devcontainerExec.mockReset().mockResolvedValue();
 });
 
 describe('getCompatibilityReport', () => {
@@ -143,6 +151,40 @@ describe('getCompatibilityReport', () => {
 
         expect(error).toBeInstanceOf(DependencyError);
         expect((error as Error).message).toBe("docker can't be both required and skipped.");
+    });
+});
+
+describe('getCompatibilityReport with DEVCONTAINER_PROFILE', () => {
+    const report = (options: Parameters<typeof getCompatibilityReport>[0] = {}) =>
+        getCompatibilityReport({ ...options, profile: DEVCONTAINER_PROFILE }, createLogger() as unknown as Logger);
+
+    it('reports docker and the Dev Container CLI as required, without checking Node.js or pnpm', async () => {
+        const result = await report();
+
+        expect(result).toEqual([
+            { tool: 'docker', required: true, minimumVersion: DOCKER_VERSION, installedVersion: '27.3.1', status: 'ok' },
+            { tool: 'devcontainer', required: true, minimumVersion: DEVCONTAINER_CLI_VERSION, installedVersion: '0.72.0', status: 'ok' },
+        ]);
+        expect(getNodeVersion).not.toHaveBeenCalled();
+        expect(getPnpmVersion).not.toHaveBeenCalled();
+    });
+
+    it('marks a missing Dev Container CLI as missing', async () => {
+        getCliVersion.mockRejectedValue(new MissingDependencyError('Failed to run "devcontainer --version".'));
+
+        const result = await report();
+
+        expect(result[1]).toMatchObject({ tool: 'devcontainer', installedVersion: null, status: 'missing' });
+    });
+
+    it('throws a DependencyError for tools outside the profile', async () => {
+        await expect(report({ require: ['node'] })).rejects.toThrow(
+            new DependencyError('Unknown tool(s): node. Expected one of: docker, devcontainer.'));
+    });
+
+    it('throws a DependencyError when a profile tool is skipped', async () => {
+        await expect(report({ skip: ['docker'] })).rejects.toThrow(
+            new DependencyError("docker can't be skipped; dev-setup always requires it."));
     });
 });
 
@@ -259,5 +301,37 @@ describe('installProjectDependencies', () => {
 
         await expect(install([pnpmRow('ok')])).rejects.toThrow(FileSystemError);
         expect(installDependencies).not.toHaveBeenCalled();
+    });
+
+    describe('in the devcontainer', () => {
+        it('runs pnpm install inside the container without needing pnpm in the report', async () => {
+            const logger = createLogger();
+
+            const result = await installProjectDependencies([], logger as unknown as Logger, 'devcontainer');
+
+            expect(result).toBe('installed');
+            expect(devcontainerExec).toHaveBeenCalledWith('pnpm install');
+            expect(installDependencies).not.toHaveBeenCalled();
+            expect(logger.log.mock.calls).toEqual([
+                ['Installing dependencies with pnpm install in the devcontainer...'],
+                ['Dependencies installed.'],
+            ]);
+        });
+
+        it('skips the install when there is no package.json', async () => {
+            exists.mockResolvedValue(false);
+
+            const result = await installProjectDependencies([], createLogger() as unknown as Logger, 'devcontainer');
+
+            expect(result).toBe('no-manifest');
+            expect(devcontainerExec).not.toHaveBeenCalled();
+        });
+
+        it('propagates a failed install', async () => {
+            devcontainerExec.mockRejectedValue(new DependencyError('"devcontainer exec --workspace-folder . pnpm install" exited with code 1.'));
+
+            await expect(installProjectDependencies([], createLogger() as unknown as Logger, 'devcontainer'))
+                .rejects.toThrow(DependencyError);
+        });
     });
 });
