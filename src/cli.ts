@@ -16,7 +16,7 @@ export const createProgram = (): Command => {
     const program = new Command()
         .name('dev-setup')
         .description('CLI for automating developer onboarding tasks')
-        .version('1.0.0')
+        .version('0.1.0')
         .option('-v, --verbose', 'Enable verbose logging')
         .option('-d, --debug', 'Enable debug mode');
 

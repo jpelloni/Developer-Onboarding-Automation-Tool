@@ -1,0 +1,95 @@
+name: Release
+
+# Publishes the standalone dev-setup binaries to a GitHub release when a version tag is pushed:
+#   git tag v0.2.0 && git push origin v0.2.0
+# The tag must match the version in package.json (which `dev-setup --version` reports). A tag with
+# a pre-release suffix (e.g. v0.2.0-rc.1) creates a pre-release.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag matches package.json
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match package.json version $version. Tag v$version instead, or bump the version."
+            exit 1
+          fi
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Check the generated modules are up to date
+        run: |
+          node scripts/generate-commands.mjs --check
+          node scripts/generate-templates.mjs --check
+
+      - name: Run unit tests
+        run: pnpm test
+
+      # The compile scripts pass --no-check (Deno's type check needs @types/node, a dev dependency),
+      # so type-check here, while the dev dependencies are still installed.
+      - name: Type-check
+        run: pnpm exec tsc --noEmit
+
+      # deno compile embeds node_modules in every binary, so drop the dev dependencies (ESLint,
+      # Jest, TypeScript, ...) first. Deno expects every package in package.json to be installed,
+      # so devDependencies is removed from this checkout's package.json too.
+      - name: Keep only production dependencies
+        run: |
+          rm -rf node_modules
+          pnpm install --prod --frozen-lockfile
+          node -e "const fs = require('fs'); const p = JSON.parse(fs.readFileSync('package.json', 'utf8')); delete p.devDependencies; fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');"
+
+      # deno compile cross-compiles, so one Linux runner builds every platform.
+      - name: Compile binaries
+        run: pnpm compile
+
+      - name: Check the binary reports the tag's version
+        run: |
+          reported="$(./out/linux/dev-setup --version)"
+          if [ "v$reported" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::dev-setup --version reports $reported, but the tag is $GITHUB_REF_NAME."
+            exit 1
+          fi
+
+      - name: Package binaries
+        run: |
+          mkdir -p dist-release
+          version="${GITHUB_REF_NAME#v}"
+          (cd out/win && zip -q "../../dist-release/dev-setup-$version-windows-x64.zip" dev-setup.exe)
+          tar -czf "dist-release/dev-setup-$version-linux-x64.tar.gz" -C out/linux dev-setup
+          tar -czf "dist-release/dev-setup-$version-macos-x64.tar.gz" -C out/mac dev-setup
+          tar -czf "dist-release/dev-setup-$version-macos-arm64.tar.gz" -C out/mac-arm64 dev-setup
+          (cd dist-release && sha256sum * > SHA256SUMS.txt)
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "$GITHUB_REF_NAME" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" dist-release/* \
+            --title "dev-setup $GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-tag \
+            $prerelease
