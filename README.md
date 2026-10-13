@@ -4,6 +4,27 @@ A modular CLI tool designed to streamline and standardize developer onboarding. 
 
 ---
 
+## Installation
+
+Download the archive for your platform from the [latest release](https://github.com/jpelloni/Developer-Onboarding-Automation-Tool/releases/latest). Each one contains a single standalone `dev-setup` executable that doesn't need Node.js or Deno installed:
+
+| Platform              | Archive                                   |
+| --------------------- | ----------------------------------------- |
+| Windows (x64)         | `dev-setup-<version>-windows-x64.zip`     |
+| Linux (x64)           | `dev-setup-<version>-linux-x64.tar.gz`    |
+| macOS (Apple Silicon) | `dev-setup-<version>-macos-arm64.tar.gz`  |
+| macOS (Intel)         | `dev-setup-<version>-macos-x64.tar.gz`    |
+
+Extract it and put `dev-setup` (`dev-setup.exe` on Windows) in a folder on your `PATH`. `SHA256SUMS.txt` in the release lists each archive's checksum. On macOS, the binary isn't signed, so remove the quarantine flag before the first run: `xattr -d com.apple.quarantine dev-setup`.
+
+```bash
+dev-setup --version
+```
+
+To build the binaries from source instead, install [Deno](https://deno.com/) and run `pnpm install`, then `pnpm compile` (or one of `compile:win`, `compile:linux`, `compile:mac`, `compile:mac-arm64`). They're written to `out/<platform>/`. The `compile:*` scripts pass `--no-check`, so run `pnpm exec tsc --noEmit` to type-check, and they embed whatever is in `node_modules`, so a local build with dev dependencies installed is about twice the size of a released one (see [Releasing](#releasing)).
+
+---
+
 ## Features
 
 Sections marked **(planned)** describe features that aren't implemented yet.
@@ -222,6 +243,11 @@ dev-setup/
 ├── .claude/
 │   └── settings.json       # Enables the Claude Code dev-workflow plugins
 │
+├── .github/
+│   └── workflows/
+│       ├── pr-checks.yml   # PR policy checks (see Pull Request Requirements)
+│       └── release.yml     # Publishes the binaries on a version tag (see Releasing)
+│
 ├── scripts/
 │   ├── check-pr.mjs              # PR policy check (run by CI and `pnpm check:pr`)
 │   ├── generate-commands.mjs     # Writes src/commands/registry.ts
@@ -416,6 +442,7 @@ If you don't pass a path, it targets the file you most recently opened or edited
 Every PR into `master` must meet these rules. The `PR checks` workflow (`.github/workflows/pr-checks.yml`) enforces them.
 
 - **No unresolved TODOs** in changed files under `src/` or `tests/`.
+- **The code type-checks** with `tsc --noEmit`. The tests don't catch type errors, because ts-jest only transpiles.
 - **All unit tests pass.**
 - **At least 80% coverage for each updated file.** Every changed `src/**/*.ts` file needs at least 80% lines, statements, functions, and branches. Placeholder files with no code (only comments or `export {}`) are skipped.
 - **Code documentation.** Every exported declaration in a changed `src/**/*.ts` file has a JSDoc (`/** ... */`) comment.
@@ -430,9 +457,26 @@ The `shared-dev-workflow` plugin's `generate-docs` skill writes the JSDoc and RE
 Check locally before opening a PR:
 
 ```bash
-pnpm test:pr     # run tests and write coverage/coverage-summary.json
-pnpm check:pr    # check files changed vs origin/master (pass another base ref as an argument if needed)
+pnpm exec tsc --noEmit   # type-check
+pnpm test:pr             # run tests and write coverage/coverage-summary.json
+pnpm check:pr            # check files changed vs origin/master (pass another base ref as an argument if needed)
 ```
+
+---
+
+## Releasing
+
+The `Release` workflow (`.github/workflows/release.yml`) publishes the binaries when a version tag is pushed:
+
+1. Bump `version` in `package.json` and the matching `.version(...)` in `src/cli.ts` (`tests/cli.test.ts` fails if they differ), and merge that to `master`.
+2. Tag the merge commit and push the tag:
+
+   ```bash
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+
+The workflow fails unless the tag is `v` plus the `package.json` version. It checks that the generated modules are current, runs the tests, and type-checks with `tsc`. Then it reinstalls only the production dependencies and removes `devDependencies` from the checkout's `package.json`, because `deno compile` embeds `node_modules` in every binary and expects every listed package to be installed; this roughly halves the binaries. It compiles every platform with `pnpm compile` (Deno cross-compiles from one Linux runner), and checks that `dev-setup --version` reports the tagged version. It then creates a GitHub release with generated notes, the four archives listed under [Installation](#installation), and `SHA256SUMS.txt`. A tag with a pre-release suffix, such as `v0.2.0-rc.1`, creates a pre-release.
 
 ---
 

@@ -30,6 +30,11 @@ jobs:
       - name: Check the project template module is up to date
         run: node scripts/generate-templates.mjs --check
 
+      # ts-jest only transpiles (isolatedModules), and the compile scripts pass --no-check, so this
+      # is the only type check.
+      - name: Type-check
+        run: pnpm exec tsc --noEmit
+
       - name: Run unit tests with coverage
         run: pnpm test:pr
 
