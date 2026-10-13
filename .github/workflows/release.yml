@@ -60,9 +60,13 @@ jobs:
           pnpm install --prod --frozen-lockfile
           node -e "const fs = require('fs'); const p = JSON.parse(fs.readFileSync('package.json', 'utf8')); delete p.devDependencies; fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');"
 
-      # deno compile cross-compiles, so one Linux runner builds every platform.
+      # deno compile cross-compiles, so one Linux runner builds every platform. pnpm checks
+      # node_modules against the lockfile before running a script, which fails now that
+      # package.json has no devDependencies, so that check is turned off.
       - name: Compile binaries
         run: pnpm compile
+        env:
+          pnpm_config_verify_deps_before_run: 'false'
 
       - name: Check the binary reports the tag's version
         run: |
