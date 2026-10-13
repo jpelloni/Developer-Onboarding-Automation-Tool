@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { Command } from 'commander';
 
 const { jest } = import.meta;
@@ -19,6 +20,12 @@ beforeEach(() => {
 });
 
 describe('createProgram', () => {
+    it('reports the package.json version, which release tags must match', () => {
+        const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+
+        expect(createProgram().version()).toBe(version);
+    });
+
     it('names the program dev-setup', () => {
         const program = createProgram();
 
