@@ -5,10 +5,17 @@ Created with `dev-setup bootstrap`.
 ## Getting started
 
 ```bash
-pnpm install
-dev-setup init    # check Node.js and pnpm, and create .env from .env.example
+dev-setup init    # set up in the devcontainer or on this machine, create .env, install, lint, and test
 pnpm dev          # run src/index.ts
 ```
+
+`dev-setup init` asks where to set the project up:
+
+- **Devcontainer** (needs Docker and the [Dev Container CLI](https://github.com/devcontainers/cli)):
+  starts the container defined in `.devcontainer/devcontainer.json` (Node.js 24, pnpm, ESLint,
+  and Prettier) and installs the dependencies inside it. You can also open the folder in VS Code
+  and run **Dev Containers: Reopen in Container**.
+- **Local** (needs Node.js 24 and pnpm): installs the dependencies on this machine.
 
 ## Scripts
 

@@ -12,6 +12,10 @@ export interface TemplateFile {
 /** Files `dev-setup bootstrap` creates, sorted by path. */
 export const PROJECT_TEMPLATE: ReadonlyArray<TemplateFile> = [
     {
+        path: ".devcontainer/devcontainer.json",
+        contents: "// Development container for {{name}}. Open the folder in VS Code and run \"Dev Containers: Reopen\n// in Container\", or run `dev-setup init` and choose the devcontainer.\n// Reference: https://containers.dev/implementors/json_reference/\n{\n  \"name\": \"{{name}}\",\n  // Node.js 24 and TypeScript.\n  \"image\": \"mcr.microsoft.com/devcontainers/typescript-node:5-24-trixie\",\n  \"features\": {\n    \"ghcr.io/devcontainers-extra/features/pnpm:2\": {\n      \"version\": \"latest\"\n    }\n    // Optional AI-assisted development: uncomment to install Claude Code in the container.\n    // \"ghcr.io/devcontainers-extra/features/claude-code:2\": {}\n  },\n  // Runs once, after the container is created.\n  \"postCreateCommand\": \"pnpm install\",\n  \"customizations\": {\n    \"vscode\": {\n      \"extensions\": [\n        \"dbaeumer.vscode-eslint\",\n        \"esbenp.prettier-vscode\"\n        // Optional AI-assisted development:\n        // \"anthropic.claude-code\"\n      ],\n      \"settings\": {\n        \"editor.defaultFormatter\": \"esbenp.prettier-vscode\",\n        \"editor.formatOnSave\": true\n      }\n    }\n  }\n}\n",
+    },
+    {
         path: ".env.example",
         contents: "# Copy to .env with `dev-setup init`, then fill in the values.\nPORT=3000\n",
     },
@@ -29,7 +33,7 @@ export const PROJECT_TEMPLATE: ReadonlyArray<TemplateFile> = [
     },
     {
         path: "README.md",
-        contents: "# {{name}}\n\nCreated with `dev-setup bootstrap`.\n\n## Getting started\n\n```bash\npnpm install\ndev-setup init    # check Node.js and pnpm, and create .env from .env.example\npnpm dev          # run src/index.ts\n```\n\n## Scripts\n\n| Script        | What it does                        |\n| ------------- | ----------------------------------- |\n| `pnpm dev`    | Runs `src/index.ts` with tsx        |\n| `pnpm build`  | Compiles `src/` to `dist/` with tsc |\n| `pnpm start`  | Runs the compiled `dist/index.js`   |\n| `pnpm test`   | Runs the Jest tests in `tests/`     |\n| `pnpm lint`   | Lints `src/` with ESLint            |\n| `pnpm format` | Formats the project with Prettier   |\n",
+        contents: "# {{name}}\n\nCreated with `dev-setup bootstrap`.\n\n## Getting started\n\n```bash\ndev-setup init    # set up in the devcontainer or on this machine, create .env, install, lint, and test\npnpm dev          # run src/index.ts\n```\n\n`dev-setup init` asks where to set the project up:\n\n- **Devcontainer** (needs Docker and the [Dev Container CLI](https://github.com/devcontainers/cli)):\n  starts the container defined in `.devcontainer/devcontainer.json` (Node.js 24, pnpm, ESLint,\n  and Prettier) and installs the dependencies inside it. You can also open the folder in VS Code\n  and run **Dev Containers: Reopen in Container**.\n- **Local** (needs Node.js 24 and pnpm): installs the dependencies on this machine.\n\n## Scripts\n\n| Script        | What it does                        |\n| ------------- | ----------------------------------- |\n| `pnpm dev`    | Runs `src/index.ts` with tsx        |\n| `pnpm build`  | Compiles `src/` to `dist/` with tsc |\n| `pnpm start`  | Runs the compiled `dist/index.js`   |\n| `pnpm test`   | Runs the Jest tests in `tests/`     |\n| `pnpm lint`   | Lints `src/` with ESLint            |\n| `pnpm format` | Formats the project with Prettier   |\n",
     },
     {
         path: "eslint.config.js",

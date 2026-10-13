@@ -27,4 +27,11 @@ describe('PROJECT_TEMPLATE', () => {
 
         expect(JSON.parse(packageJson?.contents ?? '{}').name).toBe('{{name}}');
     });
+
+    it('includes a devcontainer named after the project that installs dependencies', () => {
+        const devcontainer = PROJECT_TEMPLATE.find((file) => file.path === '.devcontainer/devcontainer.json');
+        const json = devcontainer?.contents.replace(/^\s*\/\/.*$/gm, '') ?? '{}';
+
+        expect(JSON.parse(json)).toMatchObject({ name: '{{name}}', postCreateCommand: 'pnpm install' });
+    });
 });
