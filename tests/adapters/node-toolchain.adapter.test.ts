@@ -72,4 +72,12 @@ describe('NodeToolchainAdapter', () => {
             expect(spawnMock).toHaveBeenCalledWith('pnpm install', { shell: true, stdio: 'inherit' });
         });
     });
+
+    describe('runScript', () => {
+        it('runs the script with `pnpm run`', async () => {
+            await NodeToolchainAdapter.runScript('test');
+
+            expect(spawnMock).toHaveBeenCalledWith('pnpm run test', { shell: true, stdio: 'inherit' });
+        });
+    });
 });

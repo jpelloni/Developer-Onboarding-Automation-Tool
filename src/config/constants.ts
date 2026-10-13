@@ -20,3 +20,5 @@ export const PACKAGE_MANIFEST_FILE = "package.json";
 export const DEVCONTAINER_CONFIG_FILES: readonly string[] = [".devcontainer/devcontainer.json", ".devcontainer.json"];
 /** Docker Compose files `dev-setup init` looks for, in the order Docker Compose prefers them. */
 export const COMPOSE_FILES: readonly string[] = ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"];
+/** `package.json` scripts `dev-setup init` runs as the project's initial checks, in order. Missing scripts are skipped. */
+export const PROJECT_CHECK_SCRIPTS: readonly string[] = ["lint", "test"];

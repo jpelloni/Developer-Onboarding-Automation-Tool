@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { DependencyService, type ToolReport } from '../services/dependency.service.js';
 import { DevcontainerService } from '../services/devcontainer.service.js';
 import { EnvService } from '../services/env.service.js';
+import { ProjectChecksService } from '../services/project-checks.service.js';
 import { Logger } from '../utils/logger.js';
 
 const toError = (ex: unknown): Error => (ex instanceof Error ? ex : new Error(String(ex)));
@@ -21,26 +22,32 @@ const toError = (ex: unknown): Error => (ex instanceof Error ? ex : new Error(St
  * 5. Starts the development environment (the devcontainer, or Docker Compose services), unless
  *    `--no-start` is passed. The start is skipped when the tool check failed; see
  *    {@link DevcontainerService.startDevEnvironment} for when else nothing is started.
- * 6. Prints a summary of the problems found, or that setup is complete.
+ * 6. Runs the project's `lint` and `test` scripts, unless `--no-checks` is passed. The checks
+ *    are skipped when the tool check or the install failed; see
+ *    {@link ProjectChecksService.runProjectChecks} for when else they're skipped.
+ * 7. Prints a summary of the problems found, or that setup is complete.
  *
  * Each step runs even if an earlier one fails; errors are logged rather than thrown. It sets
  * `process.exitCode` to `1` when a required tool is missing or outdated, the install fails,
- * `.env` is missing variables, the dev environment fails to start, or a step fails.
+ * `.env` is missing variables, the dev environment fails to start, a project check fails, or a
+ * step fails.
  *
  * @returns The `init` command, which `src/cli.ts` adds to the program through the registry.
  */
 export default function createInitCommand(): Command {
     return new Command('init')
-        .description('Run the developer onboarding setup: check tools, install dependencies, create and check .env, then start the dev environment')
+        .description('Run the developer onboarding setup: check tools, install dependencies, create and check .env, start the dev environment, then run the project checks')
         .option('--require <tools...>', 'treat optional tools as required (e.g. docker)')
         .option('--skip <tools...>', 'leave optional tools out of the check (e.g. docker)')
         .option('--no-install', "don't install the project's dependencies")
         .option('--no-start', "don't start the devcontainer or Docker Compose services")
+        .option('--no-checks', "don't run the project's lint and test scripts")
         .action(async (_options: unknown, command: Command) => {
             const options = command.optsWithGlobals();
             const logger = new Logger(options['verbose'], options['debug']);
             const problems: string[] = [];
             let report: ToolReport[] | undefined;
+            let installFailed = false;
 
             try {
                 report = await DependencyService.getCompatibilityReport(
@@ -62,6 +69,7 @@ export default function createInitCommand(): Command {
                     await DependencyService.installProjectDependencies(report, logger);
                 } catch (ex) {
                     logger.error(toError(ex));
+                    installFailed = true;
                     problems.push('Installing dependencies failed.');
                 }
             }
@@ -86,6 +94,24 @@ export default function createInitCommand(): Command {
                 } catch (ex) {
                     logger.error(toError(ex));
                     problems.push('Starting the dev environment failed.');
+                }
+            }
+
+            if (!options['checks']) {
+                logger.info('Skipping the project checks (--no-checks).');
+            } else if (!report) {
+                logger.info('Skipping the project checks because the tool check failed.');
+            } else if (installFailed) {
+                logger.info('Skipping the project checks because installing dependencies failed.');
+            } else {
+                try {
+                    const result = await ProjectChecksService.runProjectChecks(report, logger);
+                    if (result.status === 'ran' && result.failed.length > 0) {
+                        problems.push(`Project checks failed: ${result.failed.join(', ')}.`);
+                    }
+                } catch (ex) {
+                    logger.error(toError(ex));
+                    problems.push('Running the project checks failed.');
                 }
             }
 
