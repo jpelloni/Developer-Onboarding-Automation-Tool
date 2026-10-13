@@ -57,6 +57,21 @@ describe('DevcontainerAdapter', () => {
         });
     });
 
+    describe('exec', () => {
+        it('runs the command inside the current directory\'s devcontainer', async () => {
+            await DevcontainerAdapter.exec('pnpm install');
+
+            expect(runCommand).toHaveBeenCalledWith('devcontainer exec --workspace-folder . pnpm install');
+        });
+
+        it('propagates a DependencyError when the command fails', async () => {
+            const error = new DependencyError('"devcontainer exec --workspace-folder . pnpm install" exited with code 1.');
+            runCommand.mockRejectedValue(error);
+
+            await expect(DevcontainerAdapter.exec('pnpm install')).rejects.toBe(error);
+        });
+    });
+
     describe('isInsideContainer', () => {
         it('returns false outside a container', () => {
             expect(DevcontainerAdapter.isInsideContainer()).toBe(false);

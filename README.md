@@ -9,22 +9,46 @@ A modular CLI tool designed to streamline and standardize developer onboarding. 
 Sections marked **(planned)** describe features that aren't implemented yet.
 
 ### Environment Setup (`dev-setup init`)
-The one command to run in a freshly cloned project. In order, it:
+The one command to run in a freshly cloned project. It sets the project up either **in its devcontainer** or **on the local machine**:
+
+- `--target devcontainer` or `--target local` chooses explicitly. `--target devcontainer` fails when the project has no devcontainer configuration (`.devcontainer/devcontainer.json` or `.devcontainer.json`), or when `init` is already running inside a container.
+- Without `--target`, `init` asks when the project has a devcontainer configuration and isn't already running inside a container. Pressing Enter chooses the devcontainer.
+- It uses the local machine without asking when there's no devcontainer configuration, when it's already inside a container, or when it can't prompt (CI, piped input).
+- Running inside a container is detected from `REMOTE_CONTAINERS` (VS Code Dev Containers), `CODESPACES`, or `/.dockerenv`.
+
+```text
+$ dev-setup init
+This project has a devcontainer (.devcontainer/devcontainer.json). Set it up in the devcontainer or on this machine? [D]evcontainer / [l]ocal:
+```
+
+#### On the local machine
+
+In order, `init`:
 
 1. Prints the same tool compatibility report as [`dev-setup check`](#dependency-checker-dev-setup-check). `--require` and `--skip` work the same way.
 2. Installs the project's dependencies by running `pnpm install` in the current directory, with its output shown as it runs. The step is skipped when there's no `package.json`, pnpm is missing or outdated, or the tool check failed. Pass `--no-install` to skip it. Run with `--verbose` to see why it was skipped.
 3. Creates `.env` by copying `.env.example` in the current directory. An existing `.env` is never overwritten, and the step is skipped when there's no `.env.example`. Run with `--verbose` to see why it was skipped.
 4. If `.env` already existed, compares it with `.env.example` like [`dev-setup env`](#environment-variable-sync-dev-setup-env) and lists missing or unused variables.
 5. Starts the development environment, with the output shown as it runs:
-   - If there's a devcontainer configuration (`.devcontainer/devcontainer.json` or `.devcontainer.json`) and `init` isn't already running inside a container, it runs `devcontainer up --workspace-folder .`, which also starts any Compose services the devcontainer uses.
+   - If there's a devcontainer configuration and `init` isn't already running inside a container, it runs `devcontainer up --workspace-folder .`, which also starts any Compose services the devcontainer uses.
    - Otherwise, if there's a Compose file (`compose.yaml`, `compose.yml`, `docker-compose.yaml`, or `docker-compose.yml`), it runs `docker compose up -d`.
-   - Running inside a container is detected from `REMOTE_CONTAINERS` (VS Code Dev Containers), `CODESPACES`, or `/.dockerenv`.
    - The step is skipped when neither configuration exists, Docker was skipped with `--skip docker`, or the tool check failed. Pass `--no-start` to skip it. Run with `--verbose` to see why it was skipped.
    - If Docker is missing or outdated, or the devcontainer needs the [Dev Container CLI](https://github.com/devcontainers/cli) and it isn't installed, `init` prints a warning with a hint and doesn't start anything. That isn't counted as a problem, because Docker is optional. Pass `--require docker` to make a missing Docker fail `init`.
 6. Runs the project's initial checks: the `lint` and `test` scripts in `package.json`, in that order, with `pnpm run <script>` and its output shown as it runs. Scripts the project doesn't define are skipped, and a failing script doesn't stop the next one. The step is skipped when there's no `package.json`, it defines neither script, pnpm is missing or outdated, or the tool check or install failed. Pass `--no-checks` to skip it. Run with `--verbose` to see why it was skipped.
 7. Ends with `Setup complete.`, or a list of the problems found.
 
-Each step runs even if an earlier one fails. `init` exits with code `1` when a required tool is missing or outdated, `pnpm install` fails, `.env` is missing variables, the dev environment fails to start, a project check fails, or a step fails.
+#### In the devcontainer
+
+Node.js and pnpm come from the container, so `init` doesn't check them on the local machine. In order, it:
+
+1. Prints a tool compatibility report for Docker and the [Dev Container CLI](https://github.com/devcontainers/cli) (`devcontainer`), which are both required. `--require` and `--skip` only accept these two tools, and neither can be skipped.
+2. Creates `.env` and compares it with `.env.example`, as on the local machine. This happens before the container starts, so `devcontainer.json` can load `.env` (for example, with `--env-file` in `runArgs`).
+3. Starts the devcontainer with `devcontainer up --workspace-folder .`. The step is skipped when Docker or the Dev Container CLI is missing or outdated (the report already lists that as a problem), or the tool check failed. Pass `--no-start` to skip it.
+4. Installs the project's dependencies inside the container with `devcontainer exec --workspace-folder . pnpm install`. The step is skipped when there's no `package.json`, or the devcontainer wasn't started. Pass `--no-install` to skip it.
+5. Runs the `lint` and `test` scripts inside the container with `devcontainer exec --workspace-folder . pnpm run <script>`, under the same rules as on the local machine. The step is skipped when the devcontainer wasn't started, or the install failed. Pass `--no-checks` to skip it.
+6. Ends with `Setup complete.`, or a list of the problems found.
+
+Each step runs even if an earlier one fails. `init` exits with code `1` when `--target devcontainer` can't be used, a required tool is missing or outdated, `pnpm install` fails, `.env` is missing variables, the dev environment fails to start, a project check fails, or a step fails.
 
 ```text
 $ dev-setup init
@@ -130,13 +154,14 @@ dev-setup/
 │   │   ├── dependency.service.ts  # Checks tool versions, builds the compatibility report, and installs project dependencies
 │   │   ├── env.service.ts         # Generates .env and compares it with .env.example
 │   │   ├── project-checks.service.ts  # Runs the project's lint and test scripts
-│   │   ├── devcontainer.service.ts    # Starts the devcontainer or Docker Compose services
+│   │   ├── devcontainer.service.ts    # Chooses where init sets up, starts the devcontainer or Docker Compose services
 │   │   └── project-bootstrap.service.ts  # Creates projects from the template
 │   │
 │   ├── adapters/
 │   │   ├── devcontainer.adapter.ts
 │   │   ├── docker.adapter.ts
 │   │   ├── node-toolchain.adapter.ts
+│   │   ├── prompt.adapter.ts     # Asks the user questions in the terminal
 │   │   ├── secrets.adapter.ts
 │   │   └── file-system.adapter.ts
 │   │
@@ -172,7 +197,8 @@ dev-setup/
 │   │   ├── devcontainer.adapter.test.ts
 │   │   ├── docker.adapter.test.ts
 │   │   ├── file-system.adapter.test.ts
-│   │   └── node-toolchain.adapter.test.ts
+│   │   ├── node-toolchain.adapter.test.ts
+│   │   └── prompt.adapter.test.ts
 │   ├── config/
 │   │   └── project-template.test.ts
 │   ├── scripts/
@@ -254,10 +280,10 @@ The generator enforces these rules:
 `src/cli.ts` doesn't change.
 
 ### Services
-Core business logic for onboarding, dependency checking, environment syncing, and bootstrapping. `DependencyService.getCompatibilityReport` checks every tool concurrently and returns one row per tool, marking each required or optional, and `summarizeRequiredFailures` turns the failed required tools into one line for `check` and `init`. `DependencyService.installProjectDependencies` runs `pnpm install` when there's a `package.json` and the report shows pnpm as `ok`. `EnvService.generateEnvFile` creates `.env` from `.env.example`, and `EnvService.compareEnvFiles` reports the variables `.env` is missing or doesn't need, `DevcontainerService.startDevEnvironment` starts the devcontainer (outside a container) or the Docker Compose services when the report shows Docker as `ok`, `ProjectChecksService.runProjectChecks` runs the project's `lint` and `test` scripts (`PROJECT_CHECK_SCRIPTS`) and returns which passed and failed, and `ProjectBootstrapService.bootstrapProject` creates a project from the template. They log their results to the `Logger` they're given, and commands decide the exit code (for example, `env` sets `process.exitCode` to `1` when variables are missing). `init` composes these services rather than adding its own logic.
+Core business logic for onboarding, dependency checking, environment syncing, and bootstrapping. `DependencyService.getCompatibilityReport` checks every tool concurrently and returns one row per tool, marking each required or optional, and `summarizeRequiredFailures` turns the failed required tools into one line for `check` and `init`. Its `profile` option picks which tools to check: by default Node.js, pnpm, and Docker, or `DEVCONTAINER_PROFILE` (Docker and the Dev Container CLI, both required) when `init` sets up in the devcontainer. `DependencyService.installProjectDependencies` runs `pnpm install` when there's a `package.json` and the report shows pnpm as `ok`, or inside the devcontainer when given the `devcontainer` target. `EnvService.generateEnvFile` creates `.env` from `.env.example`, and `EnvService.compareEnvFiles` reports the variables `.env` is missing or doesn't need, `DevcontainerService.resolveInitTarget` decides whether `init` sets up in the devcontainer or on the local machine (from `--target`, or by asking), `DevcontainerService.startDevEnvironment` starts the devcontainer (outside a container) or the Docker Compose services when the report shows Docker as `ok`, `DevcontainerService.startDevcontainer` starts only the devcontainer for the `devcontainer` target, `ProjectChecksService.runProjectChecks` runs the project's `lint` and `test` scripts (`PROJECT_CHECK_SCRIPTS`), locally or inside the devcontainer, and returns which passed and failed, and `ProjectBootstrapService.bootstrapProject` creates a project from the template. They log their results to the `Logger` they're given, and commands decide the exit code (for example, `env` sets `process.exitCode` to `1` when variables are missing). `init` composes these services rather than adding its own logic.
 
 ### Adapters
-Isolated interfaces for external systems (Docker, Node, filesystem, secrets managers). Adapters wrap failures from the underlying system in the typed errors from `src/utils/errors.ts`. `NodeToolchainAdapter` and `DockerAdapter` get tool versions through `getToolVersion` in `src/utils/exec.ts`, which throws `MissingDependencyError` when a tool can't be run. `NodeToolchainAdapter.installDependencies` runs `pnpm install`, and `NodeToolchainAdapter.runScript` runs `pnpm run <script>`, through `runCommand`, which runs a command in the shell with its output streamed to the terminal and throws `DependencyError` when the command can't start or exits with a non-zero code. `DockerAdapter.composeUp` (`docker compose up -d`) and `DevcontainerAdapter.up` (`devcontainer up --workspace-folder .`) also use `runCommand`. `DevcontainerAdapter.isInsideContainer` checks `REMOTE_CONTAINERS`, `CODESPACES`, and `/.dockerenv`. `FileSystemAdapter` throws `FileSystemError`. `FileSystemAdapter.copyFileIfAbsent` copies with `COPYFILE_EXCL`, and `FileSystemAdapter.writeFileIfAbsent` writes with the `wx` flag, so the existence check and the write happen in one step and an existing file is never overwritten.
+Isolated interfaces for external systems (Docker, devcontainers, Node, the terminal, filesystem, secrets managers). Adapters wrap failures from the underlying system in the typed errors from `src/utils/errors.ts`. `NodeToolchainAdapter` and `DockerAdapter` get tool versions through `getToolVersion` in `src/utils/exec.ts`, which throws `MissingDependencyError` when a tool can't be run. `NodeToolchainAdapter.installDependencies` runs `pnpm install`, and `NodeToolchainAdapter.runScript` runs `pnpm run <script>`, through `runCommand`, which runs a command in the shell with its output streamed to the terminal and throws `DependencyError` when the command can't start or exits with a non-zero code. `DockerAdapter.composeUp` (`docker compose up -d`), `DevcontainerAdapter.up` (`devcontainer up --workspace-folder .`), and `DevcontainerAdapter.exec` (`devcontainer exec --workspace-folder . <command>`) also use `runCommand`. `DevcontainerAdapter.isInsideContainer` checks `REMOTE_CONTAINERS`, `CODESPACES`, and `/.dockerenv`. `PromptAdapter.isInteractive` checks that stdin and stdout are terminals, and `PromptAdapter.ask` reads one line with `node:readline`, returning `null` when input ends. `FileSystemAdapter` throws `FileSystemError`. `FileSystemAdapter.copyFileIfAbsent` copies with `COPYFILE_EXCL`, and `FileSystemAdapter.writeFileIfAbsent` writes with the `wx` flag, so the existence check and the write happen in one step and an existing file is never overwritten.
 
 ### Utils
 Shared helpers for logging, running shell commands (`getToolVersion`, `runCommand`), version parsing and comparison (`extractVersion`, `compareVersions`), `.env` parsing (`EnvFile.parseEnvKeys`), and error handling.

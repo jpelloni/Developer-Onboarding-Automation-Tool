@@ -4,12 +4,22 @@ export const NODE_VERSION = "v24.0.0";
 export const PNPM_VERSION = "12.0.0";
 /** Minimum Docker version `dev-setup` accepts, checked by `dev-setup check` and `init`. */
 export const DOCKER_VERSION = "24.0.0";
-/** Tools `dev-setup check` can check, in report order. */
-export const CHECKABLE_TOOLS = ["node", "pnpm", "docker"] as const;
-/** Name of a tool `dev-setup check` can check. */
-export type ToolName = typeof CHECKABLE_TOOLS[number];
+/** Minimum Dev Container CLI version `dev-setup init --target devcontainer` accepts. */
+export const DEVCONTAINER_CLI_VERSION = "0.60.0";
+/** Every tool `dev-setup` knows how to check. */
+export const KNOWN_TOOLS = ["node", "pnpm", "docker", "devcontainer"] as const;
+/** Name of a tool `dev-setup` knows how to check. */
+export type ToolName = typeof KNOWN_TOOLS[number];
+/** Tools `dev-setup check` (and `init` on the local machine) checks, in report order. */
+export const CHECKABLE_TOOLS: readonly ToolName[] = ["node", "pnpm", "docker"];
 /** Tools `dev-setup check` always requires. They can't be skipped; other tools are optional unless `--require`d. */
 export const ALWAYS_REQUIRED_TOOLS: readonly ToolName[] = ["node", "pnpm"];
+/** Tools `dev-setup init --target devcontainer` checks, in report order. Node.js and pnpm come from the container. */
+export const DEVCONTAINER_TOOLS: readonly ToolName[] = ["docker", "devcontainer"];
+/** Where `dev-setup init` sets up the project: in the project's devcontainer, or on the local machine. */
+export const INIT_TARGETS = ["devcontainer", "local"] as const;
+/** Name of a place `dev-setup init` can set up the project; see {@link INIT_TARGETS}. */
+export type InitTarget = typeof INIT_TARGETS[number];
 /** Name of the environment file `dev-setup init` creates in the current directory. */
 export const ENV_FILE = ".env";
 /** Name of the template `dev-setup init` copies to {@link ENV_FILE}. */

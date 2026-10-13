@@ -1,6 +1,7 @@
+import { DevcontainerAdapter } from '../adapters/devcontainer.adapter.js';
 import { FileSystemAdapter } from '../adapters/file-system.adapter.js';
 import { NodeToolchainAdapter } from '../adapters/node-toolchain.adapter.js';
-import { PACKAGE_MANIFEST_FILE, PROJECT_CHECK_SCRIPTS } from '../config/constants.js';
+import { type InitTarget, PACKAGE_MANIFEST_FILE, PROJECT_CHECK_SCRIPTS } from '../config/constants.js';
 import { DependencyError } from '../utils/errors.js';
 import type { Logger } from '../utils/logger.js';
 import type { ToolReport } from './dependency.service.js';
@@ -31,22 +32,26 @@ const readScriptNames = async (): Promise<string[]> => {
 
 /**
  * Runs the project's initial checks: each script in `PROJECT_CHECK_SCRIPTS` (`lint`, then `test`)
- * that the current directory's `package.json` defines, with `pnpm run <script>`.
+ * that the current directory's `package.json` defines, with `pnpm run <script>`. When `target` is
+ * `devcontainer`, the scripts run inside the running devcontainer with `devcontainer exec`.
  *
  * Every script runs even if an earlier one fails. A failed script is logged as an error and
- * listed in the result rather than thrown. Skips the checks when there is no `package.json`, it
- * defines none of the scripts, or `report` shows pnpm as missing or outdated (the report already
- * lists that as a problem). Logs the start and outcome of each script so they always print, and
- * the reason for a skip as `info` (verbose mode only).
+ * listed in the result rather than thrown. Skips the checks when there is no `package.json`, or it
+ * defines none of the scripts. On the local machine, also skips them when `report` shows pnpm as
+ * missing or outdated (the report already lists that as a problem); in the devcontainer, pnpm
+ * comes from the container, so the report isn't consulted. Logs the start and outcome of each
+ * script so they always print, and the reason for a skip as `info` (verbose mode only).
  *
  * @param report The rows returned by {@link DependencyService.getCompatibilityReport}, used to
- * check that pnpm is usable.
+ * check that pnpm is usable on the local machine.
  * @param logger Logger that receives the outcome.
+ * @param target Where to run the scripts: `local` (the default) or `devcontainer`.
  * @returns What happened; see {@link ProjectChecksResult}.
  * @throws {FileSystemError} When `package.json` can't be checked or read.
  * @throws {DependencyError} When `package.json` isn't valid JSON.
  */
-async function runProjectChecks(report: ToolReport[], logger: Logger): Promise<ProjectChecksResult> {
+async function runProjectChecks(
+    report: ToolReport[], logger: Logger, target: InitTarget = 'local'): Promise<ProjectChecksResult> {
     if (!await FileSystemAdapter.exists(PACKAGE_MANIFEST_FILE)) {
         logger.info(`No ${PACKAGE_MANIFEST_FILE} found; skipping the project checks.`);
         return { status: 'no-manifest' };
@@ -60,17 +65,22 @@ async function runProjectChecks(report: ToolReport[], logger: Logger): Promise<P
     }
 
     const pnpm = report.find((entry) => entry.tool === 'pnpm');
-    if (pnpm?.status !== 'ok') {
+    if (target === 'local' && pnpm?.status !== 'ok') {
         logger.info('pnpm is missing or outdated; skipping the project checks.');
         return { status: 'pnpm-unavailable' };
     }
 
     const passed: string[] = [];
     const failed: string[] = [];
+    const where = target === 'devcontainer' ? ' in the devcontainer' : '';
     for (const script of scripts) {
-        logger.log(`Running pnpm run ${script}...`);
+        logger.log(`Running pnpm run ${script}${where}...`);
         try {
-            await NodeToolchainAdapter.runScript(script);
+            if (target === 'devcontainer') {
+                await DevcontainerAdapter.exec(`pnpm run ${script}`);
+            } else {
+                await NodeToolchainAdapter.runScript(script);
+            }
             logger.log(`pnpm run ${script} passed.`);
             passed.push(script);
         } catch (ex) {
@@ -83,7 +93,7 @@ async function runProjectChecks(report: ToolReport[], logger: Logger): Promise<P
 
 /**
  * Service that runs the project's initial checks (its `lint` and `test` scripts), delegating to
- * `NodeToolchainAdapter` and `FileSystemAdapter`.
+ * `NodeToolchainAdapter`, `DevcontainerAdapter`, and `FileSystemAdapter`.
  */
 export const ProjectChecksService = {
     runProjectChecks,

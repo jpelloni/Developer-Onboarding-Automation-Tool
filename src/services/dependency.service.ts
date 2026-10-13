@@ -1,13 +1,17 @@
+import { DevcontainerAdapter } from '../adapters/devcontainer.adapter.js';
 import { DockerAdapter } from '../adapters/docker.adapter.js';
 import { FileSystemAdapter } from '../adapters/file-system.adapter.js';
 import { NodeToolchainAdapter } from '../adapters/node-toolchain.adapter.js';
 import {
     ALWAYS_REQUIRED_TOOLS,
     CHECKABLE_TOOLS,
+    DEVCONTAINER_CLI_VERSION,
+    DEVCONTAINER_TOOLS,
     DOCKER_VERSION,
     NODE_VERSION,
     PACKAGE_MANIFEST_FILE,
     PNPM_VERSION,
+    type InitTarget,
     type ToolName,
 } from '../config/constants.js';
 import { DependencyError } from '../utils/errors.js';
@@ -18,6 +22,7 @@ const TOOLS: Record<ToolName, { minimumVersion: string; getVersion: () => Promis
     node: { minimumVersion: NODE_VERSION, getVersion: () => NodeToolchainAdapter.getNodeVersion() },
     pnpm: { minimumVersion: PNPM_VERSION, getVersion: () => NodeToolchainAdapter.getPnpmVersion() },
     docker: { minimumVersion: DOCKER_VERSION, getVersion: () => DockerAdapter.getDockerVersion() },
+    devcontainer: { minimumVersion: DEVCONTAINER_CLI_VERSION, getVersion: () => DevcontainerAdapter.getCliVersion() },
 };
 
 /**
@@ -28,9 +33,27 @@ const TOOLS: Record<ToolName, { minimumVersion: string; getVersion: () => Promis
 export interface CompatibilityOptions {
     /** Optional tools to treat as required. */
     require?: string[];
-    /** Optional tools to leave out of the report. Tools in `ALWAYS_REQUIRED_TOOLS` can't be skipped. */
+    /** Optional tools to leave out of the report. The profile's always-required tools can't be skipped. */
     skip?: string[];
+    /**
+     * Which tools to check and which of them are always required. Defaults to
+     * `CHECKABLE_TOOLS` and `ALWAYS_REQUIRED_TOOLS`.
+     */
+    profile?: ToolProfile;
 }
+
+/** A set of tools to check, and which of them are always required (and so can't be skipped). */
+export interface ToolProfile {
+    /** Tools to check, in report order. */
+    tools: readonly ToolName[];
+    /** Tools in `tools` that are always required. */
+    alwaysRequired: readonly ToolName[];
+}
+
+/** The tools `init` checks when setting up the project in its devcontainer: Docker and the Dev Container CLI, both required. */
+export const DEVCONTAINER_PROFILE: ToolProfile = { tools: DEVCONTAINER_TOOLS, alwaysRequired: DEVCONTAINER_TOOLS };
+
+const DEFAULT_PROFILE: ToolProfile = { tools: CHECKABLE_TOOLS, alwaysRequired: ALWAYS_REQUIRED_TOOLS };
 
 /**
  * Status of one tool in a compatibility report:
@@ -55,35 +78,38 @@ export interface ToolReport {
     status: ToolStatus;
 }
 
-const parseToolNames = (names: string[] = []): ToolName[] => {
+const parseToolNames = (checkable: readonly ToolName[], names: string[] = []): ToolName[] => {
     const tools = names.flatMap((name) => name.split(',')).map((name) => name.trim().toLowerCase()).filter(Boolean);
-    const unknown = tools.filter((tool) => !(CHECKABLE_TOOLS as readonly string[]).includes(tool));
+    const unknown = tools.filter((tool) => !(checkable as readonly string[]).includes(tool));
     if (unknown.length > 0) {
         throw new DependencyError(
-            `Unknown tool(s): ${unknown.join(', ')}. Expected one of: ${CHECKABLE_TOOLS.join(', ')}.`);
+            `Unknown tool(s): ${unknown.join(', ')}. Expected one of: ${checkable.join(', ')}.`);
     }
     return tools as ToolName[];
 };
 
 /**
- * Checks every tool in `CHECKABLE_TOOLS` concurrently, so one missing or outdated tool doesn't
- * stop the others from being checked, and reports each one's installed version and status.
+ * Checks every tool in the profile (by default `CHECKABLE_TOOLS`) concurrently, so one missing or
+ * outdated tool doesn't stop the others from being checked, and reports each one's installed
+ * version and status.
  *
- * Tools in `ALWAYS_REQUIRED_TOOLS` are required; others are optional unless listed in
- * `options.require`. Logs each detected version as `info` (verbose mode only), and the reason a
- * tool is missing as `debug`.
+ * The profile's always-required tools (by default `ALWAYS_REQUIRED_TOOLS`) are required; others
+ * are optional unless listed in `options.require`. Logs each detected version as `info` (verbose
+ * mode only), and the reason a tool is missing as `debug`.
  *
- * @param options Tools to require or skip beyond the defaults; see {@link CompatibilityOptions}.
+ * @param options Tools to require or skip beyond the defaults, and the profile to check; see
+ * {@link CompatibilityOptions}.
  * @param logger Logger that receives the detected versions.
- * @returns One {@link ToolReport} per checked tool, in `CHECKABLE_TOOLS` order.
- * @throws {DependencyError} When `options` names an unknown tool, skips an always-required tool,
- * or both requires and skips the same tool.
+ * @returns One {@link ToolReport} per checked tool, in the profile's order.
+ * @throws {DependencyError} When `options` names a tool outside the profile, skips an
+ * always-required tool, or both requires and skips the same tool.
  */
 async function getCompatibilityReport(options: CompatibilityOptions, logger: Logger): Promise<ToolReport[]> {
-    const required = parseToolNames(options.require);
-    const skipped = parseToolNames(options.skip);
+    const profile = options.profile ?? DEFAULT_PROFILE;
+    const required = parseToolNames(profile.tools, options.require);
+    const skipped = parseToolNames(profile.tools, options.skip);
 
-    const unskippable = skipped.filter((tool) => ALWAYS_REQUIRED_TOOLS.includes(tool));
+    const unskippable = skipped.filter((tool) => profile.alwaysRequired.includes(tool));
     if (unskippable.length > 0) {
         throw new DependencyError(`${unskippable.join(', ')} can't be skipped; dev-setup always requires it.`);
     }
@@ -92,11 +118,11 @@ async function getCompatibilityReport(options: CompatibilityOptions, logger: Log
         throw new DependencyError(`${conflicting.join(', ')} can't be both required and skipped.`);
     }
 
-    const tools = CHECKABLE_TOOLS.filter((tool) => !skipped.includes(tool));
+    const tools = profile.tools.filter((tool) => !skipped.includes(tool));
 
     return Promise.all(tools.map(async (tool): Promise<ToolReport> => {
         const { minimumVersion, getVersion } = TOOLS[tool];
-        const isRequired = ALWAYS_REQUIRED_TOOLS.includes(tool) || required.includes(tool);
+        const isRequired = profile.alwaysRequired.includes(tool) || required.includes(tool);
         try {
             const installedVersion = await getVersion();
             logger.info(`${tool} version: ${installedVersion}`);
@@ -160,23 +186,36 @@ function summarizeRequiredFailures(report: ToolReport[]): string | null {
 export type InstallResult = 'installed' | 'no-manifest' | 'pnpm-unavailable';
 
 /**
- * Installs the current directory's project dependencies with `pnpm install`.
+ * Installs the current directory's project dependencies with `pnpm install`, on the local
+ * machine or, when `target` is `devcontainer`, inside the running devcontainer with
+ * `devcontainer exec`.
  *
- * Skips the install when there is no `package.json`, or when `report` shows pnpm as missing or
- * outdated (the report already lists that as a problem). Logs the start and success of the
- * install so they always print, and the reason for a skip as `info` (verbose mode only).
+ * Skips the install when there is no `package.json`. On the local machine, also skips it when
+ * `report` shows pnpm as missing or outdated (the report already lists that as a problem); in the
+ * devcontainer, pnpm comes from the container, so the report isn't consulted. Logs the start and
+ * success of the install so they always print, and the reason for a skip as `info` (verbose mode
+ * only).
  *
  * @param report The rows returned by {@link DependencyService.getCompatibilityReport}, used to
- * check that pnpm is usable.
+ * check that pnpm is usable on the local machine.
  * @param logger Logger that receives the outcome.
+ * @param target Where to install: `local` (the default) or `devcontainer`.
  * @returns What happened; see {@link InstallResult}.
  * @throws {FileSystemError} When the presence of `package.json` can't be checked.
  * @throws {DependencyError} When `pnpm install` can't be run or fails.
  */
-async function installProjectDependencies(report: ToolReport[], logger: Logger): Promise<InstallResult> {
+async function installProjectDependencies(
+    report: ToolReport[], logger: Logger, target: InitTarget = 'local'): Promise<InstallResult> {
     if (!await FileSystemAdapter.exists(PACKAGE_MANIFEST_FILE)) {
         logger.info(`No ${PACKAGE_MANIFEST_FILE} found; skipping dependency installation.`);
         return 'no-manifest';
+    }
+
+    if (target === 'devcontainer') {
+        logger.log('Installing dependencies with pnpm install in the devcontainer...');
+        await DevcontainerAdapter.exec('pnpm install');
+        logger.log('Dependencies installed.');
+        return 'installed';
     }
 
     const pnpm = report.find((entry) => entry.tool === 'pnpm');
@@ -194,7 +233,7 @@ async function installProjectDependencies(report: ToolReport[], logger: Logger):
 /**
  * Service that verifies the developer's required tools are installed and up to date, and
  * installs the project's dependencies. It delegates to `NodeToolchainAdapter`, `DockerAdapter`,
- * and `FileSystemAdapter`.
+ * `DevcontainerAdapter`, and `FileSystemAdapter`.
  */
 export const DependencyService = {
     getCompatibilityReport,
