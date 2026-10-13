@@ -82,7 +82,7 @@ async function bootstrapProject(name: string, options: BootstrapOptions, logger:
     if (skipped.length > 0) {
         logger.log(`Left ${skipped.length} existing file(s) unchanged: ${skipped.join(', ')}`);
     }
-    logger.log(`Created ${files.length} file(s) in ${name}/. Next steps:\n  cd ${name}\n  pnpm install\n  dev-setup init`);
+    logger.log(`Created ${files.length} file(s) in ${name}/. Next steps:\n  cd ${name}\n  dev-setup init`);
 
     return { directory: name, files, skipped };
 }

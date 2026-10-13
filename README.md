@@ -114,16 +114,15 @@ $ dev-setup env
 - Optional integration with secrets managers  
 
 ### Project Bootstrap (`dev-setup bootstrap`)
-- `dev-setup bootstrap <name>` creates a new Node.js + TypeScript + pnpm project in `./<name>` from the project template in [`templates/node-ts/`](templates/node-ts/): `package.json` with `dev`, `build`, `start`, `test`, `lint`, and `format` scripts, `tsconfig.json`, ESLint, Prettier, and Jest (native ESM) configs, a starter module and test, `.gitignore`, `.env.example`, `pnpm-workspace.yaml`, and a README.
+- `dev-setup bootstrap <name>` creates a new Node.js + TypeScript + pnpm project in `./<name>` from the project template in [`templates/node-ts/`](templates/node-ts/): `package.json` with `dev`, `build`, `start`, `test`, `lint`, and `format` scripts, `tsconfig.json`, ESLint, Prettier, and Jest (native ESM) configs, a starter module and test, `.gitignore`, `.env.example`, `pnpm-workspace.yaml`, a README, and a [devcontainer](#devcontainer-template).
 - `<name>` is used as the directory and the `package.json` name, so it must be a valid unscoped npm package name (lowercase letters, digits, `.`, `_`, and `-`, starting with a letter or digit).
 - Refuses to write into a directory that exists and isn't empty, and never overwrites a file. `--dry-run` lists the files without writing them.
-- Doesn't install dependencies or initialize Git. It prints the next steps instead: `cd <name>`, `pnpm install`, `dev-setup init`. Exits with code `1` on an invalid name, a non-empty directory, or a write failure.
+- Doesn't install dependencies or initialize Git. It prints the next steps instead: `cd <name>`, then `dev-setup init`, which installs the dependencies in the devcontainer or on the local machine. Exits with code `1` on an invalid name, a non-empty directory, or a write failure.
 
 ```text
 $ dev-setup bootstrap my-service
-[LOG] Created 13 file(s) in my-service/. Next steps:
+[LOG] Created 14 file(s) in my-service/. Next steps:
   cd my-service
-  pnpm install
   dev-setup init
 ```
 
@@ -132,10 +131,15 @@ $ dev-setup bootstrap my-service
 Edit the files in `templates/node-ts/` directly; they're ordinary files. `{{name}}` anywhere in a file is replaced with the project name. Store a gitignore as `_gitignore` (it's created as `.gitignore`), so it doesn't apply to this repo. After editing, run `pnpm generate:templates`, or any script that runs it (see [Project template](#project-template)), and commit both the template and the regenerated `src/config/project-template.ts`.
 
 ### Devcontainer Template
-- Preconfigured development environment  
-- Node + TypeScript + pnpm  
-- Recommended VS Code extensions  
-- Optional AI-assisted development tools  
+Every project `dev-setup bootstrap` creates includes `.devcontainer/devcontainer.json` ([`templates/node-ts/.devcontainer/`](templates/node-ts/.devcontainer/)), so [`dev-setup init`](#environment-setup-dev-setup-init) can set it up in a container:
+
+- The `typescript-node` image with Node.js 24 and TypeScript, plus the pnpm feature.
+- `postCreateCommand` runs `pnpm install` once the container is created, so opening the folder in VS Code with **Dev Containers: Reopen in Container** also installs the dependencies.
+- Recommended VS Code extensions: ESLint and Prettier, with Prettier as the default formatter and format on save.
+- Optional AI-assisted development tools: the Claude Code feature and extension, commented out.
+- `{{name}}` is replaced with the project name, which becomes the container's name.
+
+Like the rest of the template, it's embedded in the binary at build time, so the standalone `dev-setup` executables include it.
 
 ---
 
@@ -227,10 +231,10 @@ dev-setup/
 │
 ├── templates/
 │   └── node-ts/            # Project template for dev-setup bootstrap (edit these files)
+│       └── .devcontainer/  # Devcontainer template included in bootstrapped projects
 │
 ├── .devcontainer/
-│   ├── devcontainer.json
-│   └── Dockerfile
+│   └── devcontainer.json   # This repo's own development container
 │
 ├── jest.config.mjs
 ├── tsconfig.json           # Builds src/ only

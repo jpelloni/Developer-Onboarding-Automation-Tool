@@ -64,7 +64,7 @@ describe('bootstrapProject', () => {
 
         expect(logger.info).toHaveBeenCalledWith('Created my-service/README.md');
         expect(logger.log).toHaveBeenCalledWith(
-            'Created 2 file(s) in my-service/. Next steps:\n  cd my-service\n  pnpm install\n  dev-setup init');
+            'Created 2 file(s) in my-service/. Next steps:\n  cd my-service\n  dev-setup init');
     });
 
     it('accepts an existing empty directory', async () => {
